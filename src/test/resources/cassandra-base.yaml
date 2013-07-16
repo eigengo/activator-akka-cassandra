@@ -1,0 +1,62 @@
+name: paycasso
+columnFamilies:
+
+- name: dustbin
+  type: STANDARD
+  keyType: UTF8Type
+  readRepairChance: 0.01
+  comparatorType: UTF8Type
+  comment: Testing only.
+  columnsMetadata:
+  - {name: age, validationClass: IntegerType, indexType: KEYS}
+
+
+- name: clients
+  keyType: UUIDType
+  type: STANDARD
+  readRepairChance: 0.01
+  comparatorType: UTF8Type
+  comment: Store clients registrations to this service.
+  columnsMetadata:
+  - {name: client_id, validationClass: UUIDType, indexType: KEYS}
+  - {name: client_user, validationClass: UTF8Type,  indexType: KEYS}
+  - {name: client_password, validationClass: UTF8Type}
+  - {name: client_reference, validationClass: UTF8Type}
+  - {name: client_device_id, validationClass: UTF8Type}
+  - {name: configuration, validationClass: UTF8Type}
+
+- name: transactions
+  keyType: UUIDType
+  type: STANDARD
+  readRepairChance: 0.01
+  comparatorType: UTF8Type
+  comment: Store running transactions so that we can resume them.
+  columnsMetadata:
+  - {name: client_id, validationClass: UUIDType, indexType: KEYS}
+  - {name: client_user, validationClass: UTF8Type}
+  - {name: client_reference, validationClass: UTF8Type}
+  - {name: client_device_id, validationClass: UTF8Type}
+  - {name: outcome, validationClass: UTF8Type}
+  - {name: current_state, validationClass: UTF8Type}
+  - {name: configuration, validationClass: UTF8Type}
+  - {name: current_step_idx, validationClass: IntegerType}
+  - {name: steps, validationClass: UTF8Type}
+
+
+- name: metering
+  keyType: UUIDType
+  type: STANDARD
+  readRepairChance: 0.01
+  comparatorType: UTF8Type
+  comment: Store metering information. The key must be client_id, for easy retrieval.
+  columnsMetadata:
+  - {name: client_id, validationClass: UUIDType, indexType: KEYS}
+  - {name: client_user, validationClass: UTF8Type}
+  - {name: client_reference, validationClass: UTF8Type}
+  - {name: client_device_id, validationClass: UTF8Type}
+  - {name: transaction_type, validationClass: UTF8Type}
+  - {name: transaction_success, validationClass: BooleanType}
+  - {name: performed_ocr_front, validationClass: BooleanType}
+  - {name: performed_ocr_back, validationClass: BooleanType}
+  - {name: performed_preflight, validationClass: BooleanType}
+  - {name: performed_face_match, validationClass: BooleanType}
