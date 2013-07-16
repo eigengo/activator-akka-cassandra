@@ -1,4 +1,3 @@
-
 package core
 
 import com.datastax.driver.core._
@@ -42,9 +41,7 @@ trait CassandraImplicits {
 
   //This is a necessary evil in case we want to use the underlying
   //Java API, in particular cfr. method values(...)
-  def asObjArray(s: Any*): Array[Object] = {
-    s.map { _.asInstanceOf[Object] }.toArray
-  }
+  def asObjArray(s: Any*): Array[Object] = s.map(_.asInstanceOf[Object]).toArray
 
   implicit class RichRow(obj: Row) {
 
@@ -79,33 +76,23 @@ trait CassandraImplicits {
 
 }
 
-trait CassandraPipes extends CassandraImplicits
-  with CassandraIteratees
-  with CassandraEnumeratees
-  with CassandraEnumerators {
-  this: CassandraOperations =>
-
-}
-
-/* Generally speaking this trait focus more on the ease of use than
- * on "purity". In theory we should enumerate directly an Iterator without
+/* Generally speaking this trait focuses more on the ease of use than
+ * on "purity". In theory, we should enumerate directly an ``Iterator`` without
  * converting it into a stream, but doing so would force our entire code to
- * live in the IO monad. using "enumerate" allow us to run pure iteratees
+ * live in the IO context. Using "enumerate" allow us to run pure iteratees
  * in the Id.
  */
 trait CassandraIteratees {
 
   //Implicitly call "collect" under the hood,
   //collecting value trasformed by @f.
-  def gather[A,B](f: A => B): IterateeT[A, Id, List[B]] = {
-    collect[B, List] %= map(f)
-  }
+  def gather[A,B](f: A => B): IterateeT[A, Id, List[B]] = collect[B, List] %= map(f)
 
   implicit class RichIterateeT[E, F[_], A](obj: IterateeT[E, F, A]) {
     def runEither(implicit m: Monad[F]) = {
       fromTryCatch(obj.run(m)) match {
         case Success(r) => Right(r)
-        case Failure(e) => Left(e.getMessage())
+        case Failure(e) => Left(e.getMessage)
       }
     }
   }
@@ -135,17 +122,12 @@ trait CassandraIteratees {
 
 trait CassandraEnumeratees {
   
-  def toQuery: EnumerateeT[String, Query, Id] = {
-    map((rq:String) => new SimpleStatement(rq))
-  }
+  def toQuery: EnumerateeT[String, Query, Id] = map(new SimpleStatement(_))
 
-  def toRows: EnumerateeT[ResultSet, Stream[Row], Id] = {
-    map((rs:ResultSet) => asScalaIterator(rs.iterator()).toStream)
-  }
+  def toRows: EnumerateeT[ResultSet, Stream[Row], Id] =
+    map((rs: ResultSet) => asScalaIterator(rs.iterator()).toStream)
 
-  def toRS(implicit s:Session): EnumerateeT[Query, ResultSet, Id] = {
-    map((q:Query) => s.execute(q))
-  }
+  def toRS(session: Session): EnumerateeT[Query, ResultSet, Id] = map(session.execute(_))
 
 }
 
@@ -160,35 +142,29 @@ trait CassandraEnumerators {
     }
   }
 
-  def enumRS(rs: ResultSet): EnumeratorT[Row, Id] = {
+  def enumRS(rs: ResultSet): EnumeratorT[Row, Id] =
     enumerate(asScalaIterator(rs.iterator()).toStream)
-  }
 
   //Handle with care. Enumerating a ResultSetFuture will cause
   //the future to block and wait for the result.
-  def enumRS(rsf: ResultSetFuture): EnumeratorT[Row, Id] = {
+  def enumRS(rsf: ResultSetFuture): EnumeratorT[Row, Id] =
     enumerate(asScalaIterator(rsf.get().iterator()).toStream)
-  }
 
-  def enumRSList(rsl: List[ResultSet]): EnumeratorT[Row, Id] = {
+  def enumRSList(rsl: List[ResultSet]): EnumeratorT[Row, Id] =
     enumList(rsl.flatMap(_.all()))
-  }
 
-  def enumQueries(queries: List[Query]): EnumeratorT[Query, Id] = {
+  def enumQueries(queries: List[Query]): EnumeratorT[Query, Id] =
     enumList(queries)
-  }
 
-  def enumRawQueries(queries: List[String]): EnumeratorT[String, Id] = {
+  def enumRawQueries(queries: List[String]): EnumeratorT[String, Id] =
     enumList(queries)
-  }
 }
 
-trait CassandraCrud extends CassandraOperations with CassandraPipes {
+trait CassandraCrud extends CassandraSession with CassandraPipes {
 
   //Syntactic sugar for a recurring pattern: enumQueries(q)
-  def doQuery(query: Query) = {
+  def doQuery(query: Query) =
     enumRS(session.execute(query))
-  }
 
   def doQuery[A](query: Query, expected: A) = {
     fromTryCatch(enumRS(session.execute(query))).toEither match {
@@ -212,6 +188,11 @@ trait CassandraCrud extends CassandraOperations with CassandraPipes {
   }
 }
 
-trait CassandraOperations {
+trait CassandraSession {
   def session: Session
 }
+
+trait CassandraPipes extends CassandraImplicits
+  with CassandraIteratees
+  with CassandraEnumeratees
+  with CassandraEnumerators
