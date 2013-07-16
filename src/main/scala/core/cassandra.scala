@@ -11,9 +11,12 @@ import scala.collection.JavaConversions._
 import scala.reflect.runtime.universe.{ Bind => ReflectBind, _ }
 import spray.json._
 
-case class ErrorMessage(message: String) extends AnyVal
-object ErrorMessage {
-  implicit def toErrorMessage(message: String): ErrorMessage = ErrorMessage(message)
+private[core] object Keyspaces {
+  val akkaCassandra = "akkacassandra"
+}
+
+private[core] object ColumnFamilies {
+  val tweets = "tweets"
 }
 
 case class NotInserted(message: ErrorMessage)
@@ -98,7 +101,7 @@ trait CassandraIteratees {
   }
 
   //Run the enumerated queries, yielding a list of @ResultSet.
-  def execute(implicit session: Session): Iteratee[Query, List[ResultSet]] = {
+  def execute(session: Session): Iteratee[Query, List[ResultSet]] = {
      def step(acc: List[ResultSet])(s: Input[Query]): Iteratee[Query, List[ResultSet]] =
        s(el = e => cont(step(acc :+ session.execute(e))),
          empty = cont(step(acc)),
@@ -160,36 +163,32 @@ trait CassandraEnumerators {
     enumList(queries)
 }
 
-trait CassandraCrud extends CassandraSession with CassandraPipes {
+trait CassandraCrud extends CassandraPipes {
 
   //Syntactic sugar for a recurring pattern: enumQueries(q)
-  def doQuery(query: Query) =
+  def doQuery(query: Query)(implicit session: Session) =
     enumRS(session.execute(query))
 
-  def doQuery[A](query: Query, expected: A) = {
+  def doQuery[A](query: Query, expected: A)(implicit session: Session) = {
     fromTryCatch(enumRS(session.execute(query))).toEither match {
       case Right(_) => Right(Inserted[A](expected))
       case Left(e) => Left(NotInserted("%s failed: %s" format(query, e.getMessage)))
     }
   }
 
-  def getOne[T](f: Row => T)(q: Query): Either[ErrorMessage, T] = {
+  def getOne[T](f: Row => T)(q: Query)(implicit session: Session): Either[ErrorMessage, T] = {
     fromTryCatch(f(session.execute(q).one())).toEither match {
       case Right(v) => Right(v)
       case Left(e) => Left(e.getMessage)
     }
   }
 
-  def getOneOption[T](f: Row => T)(q: Query): Either[ErrorMessage, Option[T]] = {
+  def getOneOption[T](f: Row => T)(q: Query)(implicit session: Session): Either[ErrorMessage, Option[T]] = {
     fromTryCatch(f(session.execute(q).one())).toEither match {
       case Right(v) => Right(Some(v))
       case Left(e) => Left(e.getMessage)
     }
   }
-}
-
-trait CassandraSession {
-  def session: Session
 }
 
 trait CassandraPipes extends CassandraImplicits

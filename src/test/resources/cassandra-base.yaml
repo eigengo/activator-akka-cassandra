@@ -1,4 +1,4 @@
-name: paycasso
+name: akkacassandra
 columnFamilies:
 
 - name: dustbin

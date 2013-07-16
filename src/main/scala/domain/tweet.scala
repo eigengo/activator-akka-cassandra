@@ -2,18 +2,19 @@ package domain
 
 import java.util.Date
 
-case class Handle(author: String) extends AnyVal
-
-case class HashTag(hashTag: String) extends AnyVal
-
-case class Body(body: String) extends AnyVal
-
-case class Tweet(author: Handle, body: Body, timestamp: Date) {
-
-  def hashTags: List[HashTag] = Nil
-
-  def mentions: List[Handle] = Nil
-
-  def replyTo: Option[Handle] = None
-
+case class User(user: String) extends AnyVal
+object User {
+  implicit def toUser(user: String): User = User(user)
 }
+
+case class Text(text: String) extends AnyVal
+object Text {
+  implicit def toText(text: String): Text = Text(text)
+}
+
+case class TweetId(id: String) extends AnyVal
+object TweetId {
+  implicit def toTweetId(id: String): TweetId = TweetId(id)
+}
+
+case class Tweet(id: TweetId, user: User, text: Text, createdAt: Date)
