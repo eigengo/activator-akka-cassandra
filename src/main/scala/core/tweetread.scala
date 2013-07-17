@@ -10,7 +10,7 @@ object TweetReadActor {
 }
 
 class TweetReadActor(cluster: Cluster) extends Actor with TweetReadOperations {
-  val session = cluster.connect("tweets")
+  val session = cluster.connect()
 
   def receive: Receive = {
     case FindAll => sender ! findAllTweets

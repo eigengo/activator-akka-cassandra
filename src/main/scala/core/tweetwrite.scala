@@ -9,7 +9,7 @@ object TweetWriterActor {
 }
 
 class TweetWriterActor(cluster: Cluster) extends Actor with TwitterWriterActorOperations {
-  val session = cluster.connect("tweets")
+  val session = cluster.connect()
 
   def receive: Receive = {
     case tweet: Tweet => saveTweet(tweet)
