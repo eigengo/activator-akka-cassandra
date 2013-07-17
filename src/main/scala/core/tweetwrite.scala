@@ -25,7 +25,7 @@ private[core] trait TwitterWriterActorOperations extends CassandraCrud {
     doQuery(QB.update(Keyspaces.akkaCassandra, ColumnFamilies.tweets)
       .`with`(QB.set("user_user", tweet.user.user))
       .and(QB.set("text", tweet.text.text))
-      .and(QB.set("createdAt", tweet.createdAt))
+      .and(QB.set("createdat", tweet.createdAt))
       .where(QB.eq("key", tweet.id.id)))
 
 }

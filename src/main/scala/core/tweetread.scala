@@ -26,7 +26,7 @@ private[core] trait TweetReadOperations extends CassandraCrud {
     val id = r.getString("key")
     val user = r.getString("user_user")
     val text = r.getString("text")
-    val createdAt = r.getDate("createdAt")
+    val createdAt = r.getDate("createdat")
     Tweet(id, user, text, createdAt)
   }
 

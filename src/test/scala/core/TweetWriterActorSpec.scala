@@ -8,7 +8,7 @@ import java.util.Date
 import core.TweetReadActor.FindAll
 
 class TweetWriterActorSpec extends TestKit(ActorSystem())
-  with SpecificationLike with TestCassandraCluster with ImplicitSender {
+  with SpecificationLike with TestCassandraCluster with CleanCassandra with ImplicitSender {
 
   val writer = TestActorRef(new TweetWriterActor(cluster))
   val reader = TestActorRef(new TweetReadActor(cluster))
