@@ -17,9 +17,6 @@ libraryDependencies ++= Seq(
   "io.spray"               %% "spray-json"            % "1.2.3",
   "com.datastax.cassandra"  % "cassandra-driver-core" % "1.0.1"  exclude("org.xerial.snappy", "snappy-java"),
   "org.xerial.snappy"       % "snappy-java"           % "1.0.5", //https://github.com/ptaoussanis/carmine/issues/5
-  "org.scalaz"             %% "scalaz-core"           % "7.0.2",
-  "org.scalaz"             %% "scalaz-effect"         % "7.0.2",
-  "org.scalaz"             %% "scalaz-iteratee"       % "7.0.2",
   "org.scala-lang"          % "scala-reflect"         % "2.10.2",
   "org.specs2"             %% "specs2"                % "1.14"         % "test",
   "io.spray"                % "spray-testkit"         % "1.2-20130712" % "test",
