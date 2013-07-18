@@ -1,7 +1,7 @@
 package core
 
 import com.datastax.driver.core.{ProtocolOptions, Cluster}
-import akka.actor.{ActorSystem, Actor, ActorRef}
+import akka.actor.ActorSystem
 
 trait CassandraCluster {
   def cluster: Cluster

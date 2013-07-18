@@ -16,6 +16,8 @@ class TweetReadActor(cluster: Cluster) extends Actor {
   val selectAll = new BoundStatement(session.prepare("select * from tweets;"))
   val countAll  = new BoundStatement(session.prepare("select count(*) from tweets;"))
   import JavaConversions._
+  import RichResultSetFuture._
+  import context.dispatcher
 
   def buildTweet(r: Row): Tweet = {
     val id = r.getString("key")
@@ -27,7 +29,10 @@ class TweetReadActor(cluster: Cluster) extends Actor {
 
   def receive: Receive = {
     case FindAll  =>
-      sender ! Right(session.execute(selectAll).all().map(buildTweet).toList)
+      val realSender = sender
+      session.executeAsync(selectAll) onSuccess {
+        case rs => realSender ! Right(rs.all().map(buildTweet).toList)
+      }
     case CountAll =>
       sender ! session.execute(countAll).one.getLong(0)
   }
