@@ -1,6 +1,6 @@
 package core
 
-import com.datastax.driver.core.{ResultSet, ResultSetFuture}
+import com.datastax.driver.core.{Row, BoundStatement, ResultSet, ResultSetFuture}
 import scala.concurrent.{CanAwait, Future, ExecutionContext}
 import scala.util.{Success, Try}
 import scala.concurrent.duration.Duration
@@ -40,13 +40,33 @@ private[core] trait CassandraResultSetOperations {
 
     def value: Option[Try[ResultSet]] = if (resultSetFuture.isDone) Some(Try(resultSetFuture.get())) else None
   }
+
+  implicit def toFuture(resultSetFuture: ResultSetFuture): Future[ResultSet] = new RichResultSetFuture(resultSetFuture)
+}
+
+trait Binder[-A] {
+
+  def bind(value: A, boundStatement: BoundStatement): Unit
+
+}
+
+trait BoundStatementOperations {
+
+  implicit class RichBoundStatement[A : Binder](boundStatement: BoundStatement) {
+    val binder = implicitly[Binder[A]]
+
+    def bindFrom(value: A): BoundStatement = {
+      binder.bind(value, boundStatement)
+      boundStatement
+    }
+  }
+
 }
 
 object cassandra {
 
-  object resultset extends CassandraResultSetOperations {
-    implicit def toFuture(resultSetFuture: ResultSetFuture): Future[ResultSet] = new RichResultSetFuture(resultSetFuture)
-  }
+  object resultset extends CassandraResultSetOperations
 
+  object boundstatement extends BoundStatementOperations
 
 }
