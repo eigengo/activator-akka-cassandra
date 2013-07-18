@@ -1,7 +1,7 @@
 package core
 
-import com.datastax.driver.core.Cluster
-import akka.actor.{ActorSystem, Actor, ActorRef}
+import com.datastax.driver.core.{ProtocolOptions, Cluster}
+import akka.actor.ActorSystem
 
 trait CassandraCluster {
   def cluster: Cluster
@@ -20,6 +20,7 @@ trait ConfigCassandraCluster extends CassandraCluster {
   lazy val cluster: Cluster =
     Cluster.builder().
       addContactPoints(hosts: _*).
+      withCompression(ProtocolOptions.Compression.SNAPPY).
       withPort(port).
       build()
 }

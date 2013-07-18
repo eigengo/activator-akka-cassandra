@@ -22,7 +22,7 @@ class TweetActorsPerformanceSpec extends SpecificationLike
 
   "Fast writes" >> {
     def read: Long = {
-      val duration = 2000.milli
+      val duration = 5000.milli
       Await.result(reader.ask(CountAll)(Timeout(duration)).mapTo[Long], duration)
     }
     def write(count: Int, seconds: Int): Result = {
@@ -39,8 +39,12 @@ class TweetActorsPerformanceSpec extends SpecificationLike
       write(count = 10000, seconds = 1)
     }
 
-    "250k writes under 20s" in {
-      write(count = 250000, seconds = 20)
+    "250k writes under 10s" in {
+      write(count = 250000, seconds = 10)
+    }
+
+    "1M writes under 20s" in {
+      write(count = 1000000, seconds = 20)
     }
 
   }
