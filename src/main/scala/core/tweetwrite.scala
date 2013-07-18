@@ -2,11 +2,7 @@ package core
 
 import akka.actor.Actor
 import domain.Tweet
-import com.datastax.driver.core.{BoundStatement, Session, Cluster}
-
-object TweetWriterActor {
-
-}
+import com.datastax.driver.core.{BoundStatement, Cluster}
 
 class TweetWriterActor(cluster: Cluster) extends Actor {
   val session = cluster.connect(Keyspaces.akkaCassandra)
@@ -20,11 +16,3 @@ class TweetWriterActor(cluster: Cluster) extends Actor {
     case tweet: Tweet => saveTweet(tweet)
   }
 }
-
-/*
-  doQuery(QB.update(ColumnFamilies.tweets)
-    .`with`(QB.set("user_user", tweet.user.user))
-    .and(QB.set("text", tweet.text.text))
-    .and(QB.set("createdat", tweet.createdAt))
-    .where(QB.eq("key", tweet.id.id)))
-*/
