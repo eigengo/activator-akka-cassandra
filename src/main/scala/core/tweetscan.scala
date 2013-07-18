@@ -3,9 +3,12 @@ package core
 import spray.httpx.unmarshalling.{MalformedContent, Unmarshaller, Deserialized}
 import spray.http.HttpEntity
 import spray.json._
+import spray.client.pipelining._
 import domain.Tweet
 import scala.Some
 import java.text.SimpleDateFormat
+import akka.actor.{ActorRef, Actor}
+import java.net.URLEncoder
 
 trait TweetMarshaller {
   type Tweets = List[Tweet]
@@ -37,7 +40,19 @@ trait TweetMarshaller {
 
 }
 
-class TwitterScan {
-  // http://twitter-search-proxy.herokuapp.com/search/tweets?q=typesafe
-  //private val pipeline = sendReceive ~> unmarshal[Tweets]
+class TweetScanActor(tweetWrite: ActorRef, queryUrl: String => String) extends Actor with TweetMarshaller {
+  import context.dispatcher
+  import akka.pattern.pipe
+
+  private val pipeline = sendReceive ~> unmarshal[Tweets]
+
+  def receive: Receive = {
+    case query: String => pipeline(Get(queryUrl(query))) pipeTo tweetWrite
+  }
+}
+
+object TweetScanActor {
+
+
+
 }
