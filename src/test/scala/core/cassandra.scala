@@ -1,13 +1,13 @@
 package core
 
-import com.datastax.driver.core.{Query, Session, Cluster}
-import akka.testkit.TestKit
+import com.datastax.driver.core.{ProtocolOptions, Session, Cluster}
 import org.specs2.specification.{SpecificationStructure, Fragments, Step}
 import scala.io.Source
 import java.io.File
+import akka.actor.ActorSystem
 
 trait TestCassandraCluster extends CassandraCluster {
-  this: TestKit =>
+  def system: ActorSystem
 
   private def config = system.settings.config
 
@@ -20,6 +20,7 @@ trait TestCassandraCluster extends CassandraCluster {
     Cluster.builder().
       addContactPoints(hosts: _*).
       withPort(port).
+      withCompression(ProtocolOptions.Compression.SNAPPY).
       build()
 
 }

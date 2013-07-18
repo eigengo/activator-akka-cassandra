@@ -7,7 +7,7 @@ import domain.Tweet
 import java.util.Date
 import core.TweetReadActor.FindAll
 
-class TweetWriterActorSpec extends TestKit(ActorSystem())
+class TweetActorsSpec extends TestKit(ActorSystem())
   with SpecificationLike with TestCassandraCluster with CleanCassandra with ImplicitSender {
   sequential
 

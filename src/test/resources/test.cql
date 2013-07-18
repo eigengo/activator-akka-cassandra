@@ -1,7 +1,7 @@
 DROP TABLE tweets;
 
 CREATE TABLE tweets (
-  KEY text PRIMARY KEY,
+  key text PRIMARY KEY,
   user_user varchar,
   text varchar,
   createdat timestamp
