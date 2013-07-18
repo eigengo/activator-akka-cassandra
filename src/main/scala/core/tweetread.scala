@@ -1,7 +1,7 @@
 package core
 
 import akka.actor.Actor
-import com.datastax.driver.core.{Cluster, Row, Session}
+import com.datastax.driver.core.{BoundStatement, Cluster, Row}
 import domain.Tweet
 import core.TweetReadActor.{CountAll, FindAll}
 
@@ -10,19 +10,13 @@ object TweetReadActor {
   case object CountAll
 }
 
-class TweetReadActor(cluster: Cluster) extends Actor with TweetReadOperations {
+class TweetReadActor(cluster: Cluster) extends Actor {
   val session = cluster.connect(Keyspaces.akkaCassandra)
-
-  def receive: Receive = {
-    case FindAll => sender ! findAllTweets
-    case CountAll => sender ! countAllTweets
-  }
-}
-
-private[core] trait TweetReadOperations extends CassandraCrud {
-  import com.datastax.driver.core.querybuilder.{ QueryBuilder => QB }
-
-  implicit def session: Session
+  val selectAll = new BoundStatement(session.prepare("select * from tweets;"))
+  val countAll  = new BoundStatement(session.prepare("select count(*) from tweets;"))
+  import scala.collection.JavaConversions._
+  import cassandra.resultset._
+  import context.dispatcher
 
   def buildTweet(r: Row): Tweet = {
     val id = r.getString("key")
@@ -32,14 +26,18 @@ private[core] trait TweetReadOperations extends CassandraCrud {
     Tweet(id, user, text, createdAt)
   }
 
-  def findAllTweets(): Either[ErrorMessage, List[Tweet]] = {
-    val query = QB.select.all.from(ColumnFamilies.tweets)
-    (gather(buildTweet) &= enumRS(session.execute(query))).runEither
+  def receive: Receive = {
+    case FindAll  =>
+      val realSender = sender
+      session.executeAsync(selectAll) onSuccess {
+        case rs => realSender ! Right(rs.all().map(buildTweet).toList)
+      }
+      // sender ! session.execute(selectAll).all().map(buildTweet).toList
+    case CountAll =>
+      val realSender = sender
+      session.executeAsync(selectAll) onSuccess {
+        case rs => realSender ! rs.one.getLong(0)
+      }
+      // sender ! session.execute(countAll).one.getLong(0)
   }
-
-  def countAllTweets(): Long = {
-    val query = QB.select.countAll().from(ColumnFamilies.tweets)
-    session.execute(query).one.getLong(0)
-  }
-
 }

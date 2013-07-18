@@ -6,10 +6,13 @@ scalaVersion := "2.10.2"
 
 resolvers += "spray repo" at "http://repo.spray.io"
 
+resolvers += "spray nightlies" at "http://nightlies.spray.io"
+
 libraryDependencies ++= Seq(
   "com.typesafe.akka"      %% "akka-actor"            % "2.2.0",
   "com.typesafe.akka"      %% "akka-slf4j"            % "2.2.0",
   "io.spray"                % "spray-can"             % "1.2-20130712",
+  "io.spray"                % "spray-client"          % "1.2-20130712",
   "io.spray"                % "spray-routing"         % "1.2-20130712",
   "io.spray"               %% "spray-json"            % "1.2.3",
   "com.datastax.cassandra"  % "cassandra-driver-core" % "1.0.1"  exclude("org.xerial.snappy", "snappy-java"),
