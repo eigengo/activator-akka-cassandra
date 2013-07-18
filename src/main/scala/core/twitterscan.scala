@@ -38,6 +38,6 @@ trait TweetMarshaller {
 }
 
 class TwitterScan {
-
+  // http://twitter-search-proxy.herokuapp.com/search/tweets?q=typesafe
   //private val pipeline = sendReceive ~> unmarshal[Tweets]
 }
