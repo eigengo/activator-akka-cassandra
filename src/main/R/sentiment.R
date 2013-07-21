@@ -1,14 +1,17 @@
-library("RCassandra")
+library(RCassandra)
+library(plyr)
+library(stringr)
+library(ggplot2)
 
-# function score.sentiment
-sentiment.score = function(sentences, pos.words, neg.words, .progress='none') {
+
+sentiment.score = function(tweets, pos.words, neg.words, .progress='none') {
     # Parameters
     # sentences: vector of text to score
     # pos.words: vector of words of postive sentiment
     # neg.words: vector of words of negative sentiment
     # .progress: passed to laply() to control of progress bar
 
-    scores = laply(sentences, function(sentence, pos.words, neg.words) {
+    scores = laply(tweets, function(sentence, pos.words, neg.words) {
         # remove punctuation
         sentence = gsub("[[:punct:]]", "", sentence)
         # remove control characters
@@ -47,23 +50,48 @@ sentiment.score = function(sentences, pos.words, neg.words, .progress='none') {
         # final score
         score = sum(pos.matches) - sum(neg.matches)
         return(score)
-        }, pos.words, neg.words, .progress=.progress )
+    }, pos.words, neg.words, .progress=.progress )
 
     # data frame with scores for each sentence
-    scores.df = data.frame(text=sentences, score=scores)
+    scores.df = data.frame(text=tweets, score=scores)
     return(scores.df)
 }
 
 sentiment.main = function() {
-	pos = readLines("positive_words.txt")
-	neg = readLines("negative_words.txt")
-
 	c <- RC.connect('localhost', '9160')
 	RC.use(c, 'akkacassandra')
-	r <- RC.get.range.slices(c, 'tweets', fixed=FALSE)
+
+	pos <- RC.get.range.slices(c, "positivewords",    first="word", last="word", fixed=TRUE, comparator='UTF8Type')$word
+	neg <- RC.get.range.slices(c, "negativewords",    first="word", last="word", fixed=TRUE, comparator='UTF8Type')$word
+	tweets <- RC.get.range.slices(c, "tweets", first="text", last="text", fixed=TRUE, comparator='UTF8Type')$text
 	
 	RC.close(c)
 
-	scores = score.sentiment(ari_txt, pos, neg, .progress='text')
+	scores = sentiment.score(tweets, pos, neg, .progress='text')
+    nd = c(length(tweets))
 
+    # add variables to data frame
+    scores$all = factor(rep(c("tweets"), nd))
+    scores$very.pos = as.numeric(scores$score >= 2)
+    scores$very.neg = as.numeric(scores$score <= -2)
+
+    # how many very positives and very negatives
+    numpos = sum(scores$very.pos)
+    numneg = sum(scores$very.neg)
+
+    # global score
+    global_score = round( 100 * numpos / (numpos + numneg) )
+
+    # colors
+    cols = c("#7CAE00", "#00BFC4", "#F8766D", "#C77CFF")
+    names(cols) = c("tweets")
+
+    # boxplot
+    ggplot(scores,
+        aes(x=all, y=score, group=all)) +
+        geom_boxplot(aes(fill=all)) +
+        scale_fill_manual(values=cols) +
+        geom_jitter(colour="gray40",
+        position=position_jitter(width=0.2), alpha=0.3) +
+    opts(title = "Tweet mood")
 }
