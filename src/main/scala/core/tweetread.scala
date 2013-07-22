@@ -35,7 +35,7 @@ class TweetReadActor(cluster: Cluster) extends Actor {
       // sender ! session.execute(selectAll).all().map(buildTweet).toList
     case CountAll =>
       val realSender = sender
-      session.executeAsync(selectAll) onSuccess {
+      session.executeAsync(countAll) onSuccess {
         case rs => realSender ! rs.one.getLong(0)
       }
       // sender ! session.execute(countAll).one.getLong(0)
