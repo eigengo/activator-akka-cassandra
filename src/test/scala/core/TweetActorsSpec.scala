@@ -18,6 +18,7 @@ class TweetActorsSpec extends TestKit(ActorSystem())
     def write(count: Int): List[Tweet] = {
       val tweets = (1 to count).map(id => Tweet(id.toString, "@honzam399", "Yay!", new Date))
       tweets.foreach(writer !)
+      Thread.sleep(1000)    // wait for the tweets to hit the db
       tweets.toList
     }
 

@@ -6,28 +6,25 @@ import akka.testkit.{TestActorRef, TestKit, ImplicitSender}
 import core.TweetReadActor.FindAll
 import domain.Tweet
 
-class TweetScanActorSpec extends TestKit(ActorSystem())
+class TweetScanActorIntegrationSpec extends TestKit(ActorSystem())
   with SpecificationLike with ImplicitSender with CleanCassandra with TestCassandraCluster {
 
   sequential
 
-  val port = 12345
-  def testQueryUrl(query: String) = s"http://localhost:$port/q=$query"
+  def testQueryUrl(query: String) = s"http://twitter-search-proxy.herokuapp.com/search/tweets?q=$query"
 
   val tweetRead  = TestActorRef(new TweetReadActor(cluster))
   val tweetWrite = TestActorRef(new TweetWriterActor(cluster))
   val tweetScan  = TestActorRef(new TweetScanActor(tweetWrite, testQueryUrl))
 
-  "Getting all 'typesafe' tweets" >> {
+  "Getting all real 'typesafe' tweets" >> {
 
     "should return more than 10 last entries" in {
-      val twitterApi = TwitterApi(port)
       tweetScan ! "typesafe"
-      Thread.sleep(1000)
+      Thread.sleep(20000)
       tweetRead ! FindAll
       val tweets = expectMsgType[Either[ErrorMessage, List[Tweet]]].right.get
-      tweets.size mustEqual 4
-      twitterApi.stop()
+      println(tweets.size)
       success
     }
   }
