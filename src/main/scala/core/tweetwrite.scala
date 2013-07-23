@@ -16,5 +16,6 @@ class TweetWriterActor(cluster: Cluster) extends Actor {
   def receive: Receive = {
     case tweets: List[Tweet] => tweets.foreach(saveTweet)
     case tweet: Tweet        => saveTweet(tweet)
+    case x => println("XXX " + x)
   }
 }
