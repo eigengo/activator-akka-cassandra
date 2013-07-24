@@ -4,16 +4,17 @@ import akka.actor.Actor
 import com.datastax.driver.core.{BoundStatement, Cluster, Row}
 import domain.Tweet
 import core.TweetReadActor.{CountAll, FindAll}
+import com.datastax.driver.core.querybuilder.QueryBuilder
 
 object TweetReadActor {
-  case object FindAll
+  case class FindAll(maximum: Int = 100)
   case object CountAll
 }
 
 class TweetReadActor(cluster: Cluster) extends Actor {
   val session = cluster.connect(Keyspaces.akkaCassandra)
-  val selectAll = new BoundStatement(session.prepare("select * from tweets;"))
   val countAll  = new BoundStatement(session.prepare("select count(*) from tweets;"))
+
   import scala.collection.JavaConversions._
   import cassandra.resultset._
   import context.dispatcher
@@ -27,9 +28,10 @@ class TweetReadActor(cluster: Cluster) extends Actor {
   }
 
   def receive: Receive = {
-    case FindAll  =>
+    case FindAll(maximum)  =>
       val realSender = sender
-      session.executeAsync(selectAll) onSuccess {
+      val query = QueryBuilder.select().all().from(Keyspaces.akkaCassandra, "tweets").limit(maximum)
+      session.executeAsync(query) onSuccess {
         case rs => realSender ! Right(rs.all().map(buildTweet).toList)
       }
       // sender ! session.execute(selectAll).all().map(buildTweet).toList

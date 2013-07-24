@@ -25,7 +25,7 @@ class TweetActorsSpec extends TestKit(ActorSystem())
     "Single tweet" in {
       val tweet = write(1).head
 
-      reader ! FindAll
+      reader ! FindAll(1)
       val res = expectMsgType[Either[ErrorMessage, List[Tweet]]]
       res mustEqual Right(List(tweet))
     }
@@ -33,7 +33,7 @@ class TweetActorsSpec extends TestKit(ActorSystem())
     "100 tweets" in {
       val writtenTweets = write(100)
 
-      reader ! FindAll
+      reader ! FindAll(100)
       val readTweets = expectMsgType[Either[ErrorMessage, List[Tweet]]].right.get
       readTweets must containTheSameElementsAs(writtenTweets)
     }
