@@ -34,7 +34,7 @@ trait CleanCassandra extends SpecificationStructure {
   }
 
   private def runAllClqs(): Unit = {
-    val session = cluster.connect(Keyspaces.akkaCassandra)
+    val session = cluster.connect("akkacassandratest")
     val uri = getClass.getResource("/").toURI
     new File(uri).listFiles().foreach { file =>
       if (file.getName.endsWith(".cql")) runClq(session, file)
