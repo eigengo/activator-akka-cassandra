@@ -22,7 +22,7 @@ class TweetScanActorIntegrationSpec extends TestKit(ActorSystem())
     "should return more than 10 last entries" in {
       tweetScan ! "typesafe"
       Thread.sleep(20000)
-      tweetRead ! FindAll
+      tweetRead ! FindAll(100)
       val tweets = expectMsgType[Either[ErrorMessage, List[Tweet]]].right.get
       println(tweets.size)
       success

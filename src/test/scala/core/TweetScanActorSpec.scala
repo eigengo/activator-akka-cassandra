@@ -24,7 +24,7 @@ class TweetScanActorSpec extends TestKit(ActorSystem())
       val twitterApi = TwitterApi(port)
       tweetScan ! "typesafe"
       Thread.sleep(1000)
-      tweetRead ! FindAll
+      tweetRead ! FindAll(100)
       val tweets = expectMsgType[Either[ErrorMessage, List[Tweet]]].right.get
       tweets.size mustEqual 4
       twitterApi.stop()
