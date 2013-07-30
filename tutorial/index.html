@@ -580,7 +580,65 @@ object Main extends App with ConfigCassandraCluster {
 <div>
     <h2>For interested readers: <code>TwitterApi</code></h2>
     <p>
+        The <code>TwitterApi</code> is the mock version of the real Twitter Proxy API. It makes it easy
+        to write repeatable and independent tests of the <code>TweetScannerActor</code>. Under the hood,
+        it is implemented using Spray-Can and the HTTP Akka Extension.
+        The intention is that upon construction it binds to the given port and responds to every GET request
+        with the given body. To shutdown the API, you must call the <code>stop()</code> method. To give me
+        greater control over the construction of the class, I define the constructor as private and give
+        a companion object whose <code>apply</code> method returns properly constructed and bound
+        <code>TwitterApi</code>.
+    </p>
+<code><pre>
+class TwitterApi private(system: ActorSystem, port: Int, body: String) {
 
+  val blackHoleActor = system.actorOf(Props(new Actor {
+    def receive: Receive = Actor.emptyBehavior
+  }))
+
+  private class Service extends Actor {
+
+    def receive: Receive = {
+      case _: Http.Connected =>
+        sender ! Http.Register(self)
+      case HttpRequest(HttpMethods.GET, _, _, _, _) =>
+
+        sender ! HttpResponse(entity = HttpEntity(body))
+      case _ =>
+    }
+  }
+
+  private val service = system.actorOf(Props(new Service).withRouter(RoundRobinRouter(nrOfInstances = 50)))
+  private val io = IO(Http)(system)
+  io.tell(Http.Bind(service, "localhost", port = port), blackHoleActor)
+
+  def stop(): Unit = {
+    io.tell(Http.Unbind, blackHoleActor)
+    system.stop(service)
+    system.stop(io)
+  }
+}
+
+object TwitterApi {
+
+  def apply(port: Int)(implicit system: ActorSystem): TwitterApi = {
+    val body = Source.fromInputStream(getClass.getResourceAsStream("/tweets.json")).mkString
+    new TwitterApi(system, port, body)
+  }
+
+}
+</pre></code>
+    <p>
+        Calling <code>TwitterApi(1234)</code> with an implicit <code>ActorSystem</code> in scope
+        (for example in a <code>TestKit</code> test) loads the body from a well-known location
+        on the classpath and then constructs the <code>TwitterApi</code> instance, passing it the
+        <code>ActorSystem</code>, <code>port</code>, and <code>body</code>.
+        In the body of the <code>TwitterApi</code> class, I have an <code>Actor</code> that serves
+        the HTTP requests, which is then used in the <code>Bind</code> message sent to the <code>io</code>
+        extension.<br/>
+        The service is bound to the HTTP server until the <code>stop()</code> method is called. The <code>stop()</code>
+        method unbinds the <code>service</code>, and stops it and the <code>io</code> extension.
+        (You would typically do this at the end of your example.)
     </p>
 </div>
 <div>
