@@ -378,7 +378,7 @@ class TweetActorsSpec extends TestKit(ActorSystem())
         <code>TweetScannerActor</code>. It receives a message of type <code>String</code>, and it
         performs the HTTP request to download the tweets. (To keep this tutorial simple, I'm using
         the convenient Twitter proxy at <a href="http://twitter-search-proxy.herokuapp.com/search/tweets?q=" target="_blank">
-        http://twitter-search-proxy.herokuapp.com/search/tweets?q=$query</a>.<br/>
+        http://twitter-search-proxy.herokuapp.com/search/tweets?q=</a>.<br/>
         In any case, the task for the scanner actor is to construct the HTTP request, receive the
         response, turn it into <code>List[Tweet]</code> and send that list to the <code>ActorRef</code>
         of the <code>TweetWriterActor</code>.
@@ -644,7 +644,7 @@ object TwitterApi {
 <div>
     <h2>For interested readers: <code>sentiment.R</code></h2>
     <p>
-        
+
     </p>
 </div>
 </body>
