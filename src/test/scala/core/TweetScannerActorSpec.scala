@@ -6,7 +6,7 @@ import akka.testkit.{TestActorRef, TestKit, ImplicitSender}
 import core.TweetReaderActor.FindAll
 import domain.Tweet
 
-class TweetScanActorSpec extends TestKit(ActorSystem())
+class TweetScannerActorSpec extends TestKit(ActorSystem())
   with SpecificationLike with ImplicitSender {
 
   sequential
