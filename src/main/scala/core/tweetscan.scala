@@ -40,7 +40,7 @@ trait TweetMarshaller {
 
 }
 
-class TweetScanActor(tweetWrite: ActorRef, queryUrl: String => String) extends Actor with TweetMarshaller {
+class TweetScannerActor(tweetWrite: ActorRef, queryUrl: String => String) extends Actor with TweetMarshaller {
   import context.dispatcher
   import akka.pattern.pipe
 
@@ -51,7 +51,7 @@ class TweetScanActor(tweetWrite: ActorRef, queryUrl: String => String) extends A
   }
 }
 
-object TweetScanActor {
+object TweetScannerActor {
 
 
 
