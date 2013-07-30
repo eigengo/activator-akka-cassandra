@@ -353,7 +353,241 @@ class TweetActorsSpec extends TestKit(ActorSystem())
 
 }
 </pre></code>
-    <p>After </p>
+    <p>We are mixing in a lot of components to assemble the test. First of all, we ar extending the
+    <code>TestKit</code>, giving it an <code>ActorSystem()</code> as constructor parameter; we next
+    mix in Specs2's <code>SpecificationLike</code>, then our Cassandra test environment, completing
+    the picture with the <code>ImplicitSender</code> to allow us to examine the responses.</p>
+    <p>The actual body of the <code>"Slow & steady"</code> specification verifies that we can
+    write & read single and 100 tweets.</p>
+    <p>
+        Before you run the test, you must make sure that you have Cassandra running and that you've
+        created the right keyspaces. To make your life easier, you can simply run the CQL scripts in
+        <code>src/data</code>. You need to run--in sequence:
+    </p>
+    <ul>
+        <li><code>keyspaces.cql</code></li>
+        <li>Then, in the correct keyspace, <code>tables.cql</code></li>
+        <li><code>words.cql</code></li>
+    </ul>
+</div>
+<div>
+    <h2>Scanning tweets</h2>
+    <p>
+        Onwards! Now that we know that we can safely store and retrieve the tweets from Cassandra,
+        we need to write the component that is going to download them. In our system, this is the
+        <code>TweetScannerActor</code>. It receives a message of type <code>String</code>, and it
+        performs the HTTP request to download the tweets. (To keep this tutorial simple, I'm using
+        the convenient Twitter proxy at <a href="http://twitter-search-proxy.herokuapp.com/search/tweets?q=" target="_blank">
+        http://twitter-search-proxy.herokuapp.com/search/tweets?q=$query</a>.<br/>
+        In any case, the task for the scanner actor is to construct the HTTP request, receive the
+        response, turn it into <code>List[Tweet]</code> and send that list to the <code>ActorRef</code>
+        of the <code>TweetWriterActor</code>.
+    </p>
+<code><pre>
+class TweetScannerActor(tweetWrite: ActorRef, queryUrl: String => String)
+  extends Actor with TweetMarshaller {
+
+  import context.dispatcher
+  import akka.pattern.pipe
+
+  private val pipeline = sendReceive ~> unmarshal[List[Tweet]]
+
+  def receive: Receive = {
+    case query: String => pipeline(Get(queryUrl(query))) pipeTo tweetWrite
+  }
+}
+</pre></code>
+    <p>
+        It is actually that simple! We use Spray-Client to construct the HTTP pipeline, which makes
+        HTTP request (<code>sendReceive</code>), and passes the raw HTTP response to be unmarshalled
+        (that is, turned into instance of types in our systems).<br/>
+        The <code>pipeline</code> starts its job when it is applied to <code>HttpRequest</code>; in
+        our case, <code>Get(url: String)</code> represents a mechanism that can construct such
+        <code>HttpRequest</code>s. When applied to the <code>query</code>, the function
+        <code>queryUrl</code> returns the actual URL for the pipeline to work on.<br/>
+        Execution of the <code>pipeline</code> returns <code>Future[List[Tweet]]</code>, which we
+        can happily <code>pipeTo</code> the <code>tweetWrite</code> actor.
+    </p>
+    <p>
+        The only job that remains is for us to implement the unmarshaller. In Spray-Client's case
+        unmarshaller is a typeclass and the implementation is an instance of the typeclass.<br/>
+        The easiest way to think about typeclasses is to imagine that typeclass is a <em>trait</em>
+        which defines behaviour for some type, and that the typeclass instance is the implementation
+        of that trait for some type.
+    </p>
+    <p>
+        In Spray-Client's case, the typeclass is <code>trait Unmarshaller[A]</code>, whose <code>apply</code>
+        method takes <code>HttpEntity</code> and returns <code>Deserialized[A]</code>. The name <code>apply</code>
+        should ring some bells--and indeed, <code>Unmarshaller[A]</code> is in essence an alias for
+        <code>trait Unmarshaller[A] extends (HttpEntity => Deserialized[A])</code>. (<em>Yes, you can
+        <em>extend</em> (A => B) in Scala, which is syntactic sugar for <code>trait Unmarshaller[A] extends
+        Function1[HttpEntity, Deserialized[A]]</code></em>.)<br/>
+        Now, the <code>unmarshal</code> directive we used earlier is defined as
+    </p>
+<code><pre>
+def unmarshal[A : Unmarshaller]: HttpResponse => A
+</pre></code>
+    <p>
+        The <code>: Unmarshaller</code> is a context bound on the type parameter <code>A</code>, which
+        causes the compiler to expand the function into
+    </p>
+<code><pre>
+def unmarshal[A](implicit ev: Unmarshaller[A]): HttpResponse => A
+</pre></code>
+    <p>
+        The <code>unmarshal</code> function expects an instance of the typeclass <code>Unmarshaller</code>
+        for some type <code>A</code>; in our case, we specify the type <code>A</code> to be
+        <code>List[Tweet]</code>. We can make a mental substitution of <code>A</code> for
+        <code>List[Tweet]</code> and arrive at <code>unmarshal[List[Tweet]](implicit ev: Unmarshaller[List[Tweet]]): ...</code>.
+        To make the application work, there needs to be a value of type <code>Unmarshaller[List[Tweet]]</code> in
+        the current implicit scope. When we give such value, we say that we are giving instance of the
+        <code>Unmarshaller</code> typeclass.
+    </p>
+<code><pre>
+trait TweetMarshaller {
+  type Tweets = List[Tweet]
+
+  implicit object TweetUnmarshaller extends Unmarshaller[Tweets] {
+
+    val dateFormat = new SimpleDateFormat("EEE MMM d HH:mm:ss Z yyyy")
+
+    def mkTweet(status: JsValue): Deserialized[Tweet] = {
+      val json = status.asJsObject
+      ...
+    }
+
+    def apply(entity: HttpEntity): Deserialized[Tweets] = {
+      val json = JsonParser(entity.asString).asJsObject
+      ...
+    }
+  }
+
+}
+</pre></code>
+    <p>
+        Our typeclass instance is the <code>TweetUnmarshaller</code> singleton, which extends
+        <code>Unmarshaller[Tweets]</code>. Notice that I have also defined a type alias
+        <code>type Tweets = List[Tweet]</code> so that I don't have to write too many square brackets.
+        By extending <code>Unmarshaller[Tweets]</code>, we must implement the <code>apply</code> method,
+        which is applied to the <code>HttpEntity</code> and should return either deserialized tweets or
+        indicate an error.
+    </p>
+    <p>
+        We nearly have everything in place. But how do we satisfy ourselves that the <code>TweetScannerActor</code>
+        indeed works?
+    </p>
+</div>
+<div>
+    <h2>Testing the <code>TweetScannerActor</code></h2>
+    <p>
+        To test the scanner fully, we would like to use a well-known service. But where do we get it?
+        We can't really use the live service, because the tweets keep changing. It seems that the only
+        way would be for us to implement a mock service and use it in our tests.
+    </p>
+<code><pre>
+class TweetScanActorSpec extends TestKit(ActorSystem())
+  with SpecificationLike with ImplicitSender {
+
+  sequential
+
+  val port = 12345
+  def testQueryUrl(query: String) = s"http://localhost:$port/q=$query"
+
+  val tweetScan = TestActorRef(new TweetScannerActor(testActor, testQueryUrl))
+
+  "Getting all 'typesafe' tweets" >> {
+
+    "should return more than 10 last entries" in {
+      val twitterApi = TwitterApi(port)
+      tweetScan ! "typesafe"
+      Thread.sleep(1000)
+      val tweets = expectMsgType[List[Tweet]]
+      tweets.size mustEqual 4
+      twitterApi.stop()
+      success
+    }
+  }
+}
+</pre></code>
+    <p>
+        When constructing the <code>TweetScannerActor</code>, we give it the <code>testActor</code> and
+        a function that returns URLs on <code>localhost</code> on some <code>port</code>. In the body of the
+        example, we start the mock <code>TwitterApi</code> on the given port; and use our <code>TweetScannerActor</code>
+        to make the HTTP request. Because we gave the <code>testActor</code> as the writer <code>ActorRef</code>,
+        we should now be able to see the <code>List[Tweet]</code> that would have been sent to the <code>TweetWriterActor</code>.<br/>
+        Because our mock tweetset contains four tweets, we can make the assertion that the list indeed contains four
+        tweets. (I leave more extensive testing as exercise for the reader.)
+    </p>
+</div>
+<div>
+    <h2>Main</h2>
+    <p>
+        I am now satisfied that the components in the system work as expected; I can therefore assemble the
+        <code>App</code> object, which brings everything together in a command-line interface. I give you the
+        <code>Main</code> object:
+    </p>
+<code><pre>
+object Main extends App with ConfigCassandraCluster {
+  import Commands._
+  import akka.actor.ActorDSL._
+
+  def twitterSearchProxy(query: String) = s"http://twitter-search-proxy.herokuapp.com/search/tweets?q=$query"
+
+  implicit lazy val system = ActorSystem()
+  val write = system.actorOf(Props(new TweetWriterActor(cluster)))
+  val read = system.actorOf(Props(new TweetReaderActor(cluster)))
+  val scan = system.actorOf(Props(new TweetScannerActor(write, twitterSearchProxy)))
+
+  // we don't want to bother with the ``ask`` pattern, so
+  // we set up sender that only prints out the responses to
+  // be implicitly available for ``tell`` to pick up.
+  implicit val _ = actor(new Act {
+    become {
+      case x => println(">>> " + x)
+    }
+  })
+
+  @tailrec
+  private def commandLoop(): Unit = {
+    Console.readLine() match {
+      case QuitCommand                => return
+      case ScanCommand(query)         => scan ! query.toString
+
+      case ListCommand(count)         => read ! FindAll(count.toInt)
+      case CountCommand               => read ! CountAll
+
+      case _                          => println("WTF??!!")
+    }
+
+    commandLoop()
+  }
+
+  // start processing the commands
+  commandLoop()
+
+  // when done, stop the ActorSystem
+  system.shutdown()
+
+}
+</pre></code>
+    <p>
+        We have the main <code>commandLoop()</code> function, which reads the line from standard input,
+        matches it against the commands and sends the appropriate messages to the right actors.<br/>
+        It also mixes in the "real" source of Cassandra <code>Cluster</code> values and specifies the
+        live function that constructs the URL to retrieve the tweets.
+    </p>
+</div>
+<div>
+    <h2>For interested readers: <code>TwitterApi</code></h2>
+    <p>
+
+    </p>
+</div>
+<div>
+    <h2>For interested readers: <code>sentiment.R</code></h2>
+    <p>
+        
+    </p>
 </div>
 </body>
 </html>

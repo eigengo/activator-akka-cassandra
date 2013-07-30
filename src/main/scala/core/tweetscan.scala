@@ -50,9 +50,3 @@ class TweetScannerActor(tweetWrite: ActorRef, queryUrl: String => String) extend
     case query: String => pipeline(Get(queryUrl(query))) pipeTo tweetWrite
   }
 }
-
-object TweetScannerActor {
-
-
-
-}

@@ -7,16 +7,14 @@ import core.TweetReaderActor.FindAll
 import domain.Tweet
 
 class TweetScanActorSpec extends TestKit(ActorSystem())
-  with SpecificationLike with ImplicitSender with CleanCassandra with TestCassandraCluster {
+  with SpecificationLike with ImplicitSender {
 
   sequential
 
   val port = 12345
   def testQueryUrl(query: String) = s"http://localhost:$port/q=$query"
 
-  val tweetRead  = TestActorRef(new TweetReaderActor(cluster))
-  val tweetWrite = TestActorRef(new TweetWriterActor(cluster))
-  val tweetScan  = TestActorRef(new TweetScannerActor(tweetWrite, testQueryUrl))
+  val tweetScan  = TestActorRef(new TweetScannerActor(testActor, testQueryUrl))
 
   "Getting all 'typesafe' tweets" >> {
 
@@ -24,7 +22,6 @@ class TweetScanActorSpec extends TestKit(ActorSystem())
       val twitterApi = TwitterApi(port)
       tweetScan ! "typesafe"
       Thread.sleep(1000)
-      tweetRead ! FindAll(100)
       val tweets = expectMsgType[List[Tweet]]
       tweets.size mustEqual 4
       twitterApi.stop()
