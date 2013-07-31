@@ -1,590 +1,457 @@
 <html>
 <head>
-    <title>Akka and Spray</title>
+    <title>Akka and Cassandra</title>
 </head>
 <body>
 <div>
-    <h2>Akka and Spray</h2>
-
-    <p>
-        This application shows how to build Akka application with Spray API. In this tutorial, I 
-        am going to use Spray's <code>spray-can</code>, <code>spray-httpx</code>,
-        <code>spray-json</code> artefacts with the <em>Akka</em> artefacts to build an application
-        that receives HTTP requests with JSON payloads, unmarshals the JSON into instances of our
-        own classes (<code>case class</code>es, to be exact). It then sends these instances to the
-        appropriate <code>Actor</code>s for processing. When the actors reply, it marshals the 
-        responses into JSON, and uses that to construct the HTTP responses.
-    </p>
-    <p>
-        I shall also explore the <em>Cake pattern</em>, which enable us to separate out parts of the
-        system so that I can "assemble" the parts of the cake into the components that I ultimately
-        run or test.
-    </p>
-    <p>
-        <img src="tutorial/overall.png" title="Overall structure"/>
-    </p>
-
-    <p>
-        In this template &amp; tutorial, you will learn how to construct <a href="http://akka.io" target="_blank">Akka</a>-based
-        applications; how to test them (using <a href="http://doc.akka.io/docs/akka/snapshot/scala/testing.html" target="_blank">TestKit</a> and <a href="http://etorreborre.github.io/specs2/" target="_blank">Specs2</a>;
-        and how to provide RESTful HTTP API using <a href="http://spray.io/" target="_blank">Spray</a>.
-    </p>
+<h2>Akka and Cassandra</h2>
+<p>In this tutorial, I am going to use the Spray-Client, DataStacks Cassandra driver and Akka to build an application that downloads tweets and then stores their id, text, name and date in a Cassandra table.It shows you how to build a simple Akka application with just a few actors, how to use Akka IO to make HTTP requests, and how to store the data in Cassandra. It also demonstrates approaches to testing of such applications, including performance tests.</p>
+<p><img src="tutorial/overall.png" title="Overall structure"/></p>
+<p>Learn how to construct <a href="http://akka.io" target="_blank">Akka</a>-based command-line applications;how to test them (using <a href="http://doc.akka.io/docs/akka/snapshot/scala/testing.html" target="_blank">TestKit</a>)and <a href="http://etorreborre.github.io/specs2/" target="_blank">Specs2</a>; and how to use <a href="http://spray.io/" target="_blank">Spray-Client</a> to make asynchronous HTTP requests.</p>
 </div>
 <div>
-    <h2>The core</h2>
-    <p>
-        I begin by constructing the core of our system. It contains the top-level
-        <code>MessengerActor</code> and <code>RegistrationActor</code>. The
-        <code>MessengerActor</code> contains two child actors, the <code>EmailActor</code> and
-        the <code>SMSActor</code>.
-    </p>
-    <p>
-        The top-level actors <em>live</em> in the <code>CoreActors</code> trait. This trait's
-        <a href="http://docs.scala-lang.org/glossary/" target="_blank">self-type annotation</a> defines that instances that mix in this trait
-        must also mix in some subtype of the <code>Core</code> trait.<br/>
-        This is a rather long description of the first two lines of the <code>CoreActors</code> trait.
-<pre><code>
-trait CoreActors {
-  this: Core =>
-
-}
-</code></pre>
-        Because of the self-type declaration, I have access to all members of the <code>Core</code>
-        trait in the <code>CoreActors</code> trait. Our <code>Core</code> trait defines only one
-        member, namely <code>implicit def system: ActorSystem</code>; and I use the <code>system</code>
-        to create the top-level actors.
-    </p>
-    <p>
-        The <code>CoreActor</code> in its entirety is therefore
-<pre><code>
-trait CoreActors {
-  this: Core =>
-
-  val registration = system.actorOf(Props[RegistrationActor])
-  val messenger    = system.actorOf(Props[MessengerActor])
-
-}
-</code></pre>
-    </p>
-    <p>
-        I also provide the implementation of the <code>Core</code> trait that actually constructs
-        the <code>ActorSystem</code>. I call this trait <code>BootedCore</code>. It instantiates the
-        <code>ActorSystem</code> and registers the JVM termination hook to shutdown the <code>ActorSystem</code>
-        on JVM exit.
-<pre><code>
-trait BootedCore extends Core {
-
-  implicit val system = ActorSystem("akka-spray")
-
-  sys.addShutdownHook(system.shutdown())
-
-}
-</code></pre>
-        As you can see, the <code>BootedCore</code> is a straight-forward implementation of the
-        <code>Core</code> trait.
-    </p>
-
-    <p>
-        If I now wanted, I could write a simple application that starts our actors by
-        mixing in the traits.
-<pre><code>
-object Cli extends App with BootedCore with CoreActors
-</code></pre>
-        I must be mindful of the initialization order, though. It would be an error to
-        write <code>object Cli extends App with CoreActors with BootedCore</code>!<br/>
-        It is because the <code>BootedCore</code>'s implementation of the <code>system</code>
-        method is <code>implicit val system = ActorSystem("akka-spray")</code> and if
-        I write <code>object Cli extends App with CoreActors with BootedCore</code>, the
-        code in <code>CoreActors</code> runs before the code in <code>BootedCore</code>--meaning
-        that when the code in <code>CoreActors</code> runs, the value of the <code>system</code>
-        <code>val</code> is still <code>null</code>.
-    </p>
-
-    <p>
-        Having to worry about the order in which I mix in the traits is wholly unsatisfactory.
-        I need to find a way in which a <code>val</code> can be evaluated immediately when
-        its value is required, but once it is evaluated, it behaves like an ordinary <code>val</code>.
-        Rephrasing, I want a member whose value will be computed and remembered on first access, and
-        subsequent accesses will return the remembered value.
-        <br/>
-        To do this in Scala, I mark the <code>val</code> as <code><em>lazy</em></code>. Thus, our
-        <code>BootedCore</code>'s <code>system</code> becomes
-<pre><code>
-trait BootedCore extends Core {
-
-  implicit lazy val system = ActorSystem("akka-spray")
-
-  sys.addShutdownHook(system.shutdown())
-
-}
-</code></pre>
-        Notice the <code>lazy</code> keyword--now I am free to mix in the required traits
-        in any order.
-    </p>
-</div>
-<div>
-    <h2>Testing</h2>
-
-    <p>
-        Let's now explore why I did so much code gymnastics. I could have just as easily
-        defined the <code>CoreActors</code> trait to contain all the code in <code>Core</code> and
-        <code>BootedCore</code>.
-    </p>
-
-    <p>
-        The motivation was testing. When I am using Akka's <a href="http://doc.akka.io/docs/akka/snapshot/scala/testing.html" target="_blank">TestKit</a>, we
-        construct a test-only <code>ActorSystem</code>. This testing <code>ActorSystem</code>
-        allows us to test the actors as if the messages sent and received were method
-        calls. In other words, the <code>ActorSystem</code> in our tests uses the
-        <code>CallingThreadDispatcher</code>, making the message delivery synchronous.
-    </p>
-
-    <p>
-        As it happens, the <code>TestKit</code> contains a member called <code>system: ActorSystem</code>;
-        and it matches the <code>Core</code> trait. Therefore, it is easy to make our <em>specification</em>
-        implement the <code>Core</code> trait. This in turn means that our test satisfies the self-type
-        annotation of the <code>CoreActors</code> trait.<br/>
-        And thus, I can easily write a test for our entire application's structure.
-<pre><code>
-class RegistrationActorSpec extends TestKit(ActorSystem()) with SpecificationLike with CoreActors with Core {
+<h2>The core</h2>
+<p>I begin by constructing the core of our system. It contains three actors two that interact with the tweet database and one that downloads the tweets. The <code>TwitterReadActor</code> reads from the <code>Cluster</code>, the <code>TweetWriteActor</code> writes into the <code>Cluster</code>, and the <code>TweetScanActor</code> downloadsthe tweets and passes them to the <code>TweetWriteActor</code> to be written. These dependencies are expressed in the actors' constructors</p>
+<code><pre>
+class TweetReadActor(cluster: Cluster) extends Actor {
   ...
 }
-</code></pre>
-        I extend the <code>TestKit</code> class, which gives us access to all the underlying Akka's test
-        mechanisms; I also mix in <a href="http://etorreborre.github.io/specs2/" target="_blank">Specs2</a>'s <code>SpecificationLike</code>, which gives
-        us the convenient DSL for writing our test scenarios and assertions. Finally, because I am writing code
-        to test <em>my</em> actors, I mix in the <code>CoreActors</code> and <code>Core</code> traits.
-        I do not need to do any more work, because the member <code>system: ActorSystem</code> fully implements
-        the <code>Core</code> trait. However, I need to implement the <code>Core</code> trait to satisfy the
-        self-type declaration of the <code>CoreActors</code>.
-    </p>
 
-    <p>
-        I could have defined <code>Core</code> to be <a href="http://docs.scala-lang.org/glossary/" target="_blank">structural type</a>, in which case,
-        I would not have to worry about implementing <code>Core</code> here. If you want to try it out,
-        remove the <code>trait Core { ... }</code> and replace it with
-<pre><code>
-package object core {
-
-  type Core = { def system: ActorSystem }
-
+class TweetWriterActor(cluster: Cluster) extends Actor {
+  ...
 }
-</code></pre>
-        Here, the <code>Core</code> type is a <em>structural type</em>, which says that
-        <code>Core</code> is anything which contains the <code>system: ActorSystem</code> member.
-    </p>
+
+class TweetScanActor(tweetWrite: ActorRef, queryUrl: String => String) extends Actor {
+  ...
+}
+</pre></code>
+<p>The constructor parameter of the <em>read</em> and <em>write</em> actors is just the Cassandra <code>Cluster</code> instance; the <em>scan</em> actor takes an <code>ActorRef</code> of the <em>write</em> actor and a function that given a <code>String</code> query can construct the query URL to download the tweets. (This is how I construct keyword searches, for example.)</p>
+<p>To construct our application, all we need to do is to instantiate the actors in the right sequence</p>
+<code><pre>
+val system = ActorSystem()
+
+def queryUrl(query: String): String = ???
+val cluster: Cluster = ???
+
+val reader  = system.actorOf(Props(new TweetReaderActor(cluster)))
+val writer  = system.actorOf(Props(new TweetWriterActor(cluster)))
+val scanner = system.actorOf(Props(new TweetScannerActor(writer, queryUrl)))
+</pre></code>
+<p>I shall leave the implementation of <code>cluster</code> and <code>queryUrl</code> as <code>???</code> the <em>kink in the chain</em>, <em>logical inconsistency in otherwise perfect system</em>, a.k.a. <a href="http://www.haskell.org/haskellwiki/Bottom" target="_blank">the bottom type</a>.</p>
 </div>
 <div>
-    <h2>The actors</h2>
-
-    <p>
-        The implementation of the actors is not particularly interesting. I will explore the
-        common patterns of naming and structuring that I believe are useful; the implementation
-        of the actors I leave to the readers.
-    </p>
-
-    <p>
-        I begin with the <code>RegistrationActor</code>. Its purpose is to register the users in our
-        system. The actor's <a href="http://docs.scala-lang.org/glossary/" target="_blank">companion object</a> holds all the messages that the
-        actor deals with. In code, the structure is
-<pre><code>
-object RegistrationActor {
-  case class Register(user: User)
-  case object Registered
-  case object NotRegistered
-}
-
-class RegistrationActor extends Actor {
-  import RegistrationActor._
-
-  def receive: Receive = ???
-}
-</code></pre>
-        This structure allows me to tidy up the messages and perhaps some utility functions
-        in the future from the actor itself.
-    </p>
-    <p>
-        Onwards to the actor's implementation, then. As I said, it will be rather trivial,
-        mainly demonstrating approaches &amp; patterns. When it receives the <code>Register</code>
-        message, it performs the required processing and then replies to the <em>sender</em> with
-        the outcome of the registration process.
-<pre><code>
-class RegistrationActor extends Actor{
-import RegistrationActor._
+<h2>Writing to Cassandra</h2>
+<p>Now that we have the structure in place, we can take a look at the <code>TwitterWriterActor</code>. It receives instances of <code>Tweet</code>, which it writes to the <code>tweets</code> keyspace in Cassandra.</p>
+<code><pre>
+class TweetWriterActor(cluster: Cluster) extends Actor {
+  val session = cluster.connect(Keyspaces.akkaCassandra)
+  val preparedStatement = session.prepare("INSERT INTO tweets(key, user_user, text, createdat) VALUES (?, ?, ?, ?);")
 
   def receive: Receive = {
-    case Register(user) if user.email.isEmpty => sender ! Left(NotRegistered)
-    case Register(user)                       => sender ! Right(Registered)
+    case tweets: List[Tweet] =>
+    case tweet: Tweet        =>
   }
-
 }
-</code></pre>
-        I warned you, it is not very clever at all :).
-    </p>
+</pre></code>
+<p>To save the tweets, we need to <em>connect</em> to the correct keyspace, which gives us the Cassandra <code>Session</code>. Because we try to be as efficient as possible, we will take advantage of Cassandra's <code>PreparedStatement</code>s and <code>BoundStatement</code>s. The <code>PreparedStatement</code> is a pre-chewed CQL statement, a <code>BoundStatement</code> is a <code>PreparedStatemnt</code> whose parameter values are set.</p>
+<p>So, this gives us the hint of the what the <code>saveTweet</code> function needs to do.</p>
+<code><pre>
+class TweetWriterActor(cluster: Cluster) extends Actor {
+  val session = cluster.connect(Keyspaces.akkaCassandra)
+  val preparedStatement = session.prepare("INSERT INTO tweets(key, user_user, text, createdat) VALUES (?, ?, ?, ?);")
+
+  def saveTweet(tweet: Tweet): Unit =
+    session.executeAsync(preparedStatement.bind(tweet.id.id, tweet.user.user, tweet.text.text, tweet.createdAt))
+
+  def receive: Receive = {
+    case tweets: List[Tweet] =>
+    case tweet: Tweet        =>
+  }
+}
+</pre></code>
+<p>The only thing that remains to be done is to use it in the <code>receive</code> partial function.</p>
+<code><pre>
+class TweetWriterActor(cluster: Cluster) extends Actor {
+  val session = cluster.connect(Keyspaces.akkaCassandra)
+  val preparedStatement = session.prepare("INSERT INTO tweets(key, user_user, text, createdat) VALUES (?, ?, ?, ?);")
+
+  def saveTweet(tweet: Tweet): Unit =
+    session.executeAsync(preparedStatement.bind(tweet.id.id, tweet.user.user, tweet.text.text, tweet.createdAt))
+
+  def receive: Receive = {
+    case tweets: List[Tweet] => tweets foreach saveTweet
+    case tweet: Tweet        => saveTweet(tweet)
+  }
+}
+</pre></code>
+<p>So, we have code that saves instances of <code>Tweet</code> to the keyspace in our Cassandra cluster.</p>
 </div>
 <div>
-    <h2>Testing the <code>RegistrationActor</code></h2>
+<h2>Reading from Cassandra</h2>
+<p>Reading the data is ever so slightly more complex we would like to support the <em>count</em> and <em>find all</em> operations. Then, we need to be able to construct Cassandra queries; then, given a Cassandra <code>Row</code>, we need to be able to turn it into our <code>Tweet</code> object. Naturally, we also want to take advantage of the asynchronous nature of the Cassandra driver. Luckily, things won't be that complex. Let me begin with the structure of the <code>TweetReaderActor</code>.</p>
+<code><pre>
+object TweetReaderActor {
+  case class FindAll(maximum: Int = 100)
+  case object CountAll
+}
 
-    <p>
-        As simple as the <code>RegistrationActor</code> is, I can (and <em>should</em>) still test it.
-        I can either test the actor in isolation, writing a <em>unit test</em>, or I can test our
-        entire application, but focusing on the <code>RegistrationActor</code>--an <em>integration test</em>.<br/>
-        I will show the integration test approach here.
-    </p>
+class TweetReaderActor(cluster: Cluster) extends Actor {
+  val session = cluster.connect(Keyspaces.akkaCassandra)
+  val countAll  = new BoundStatement(session.prepare("select count(*) from tweets;"))
 
-    <p>
-        To allow us to examine what happens in our actors, I need to use special--<em>crippled</em>--
-        <code>ActorSystem</code> that processes the messages synchronously. To the code, then. We
-        extend the <code>TestKit</code> class and mix in the required traits to construct the test.
-<pre><code>
-class RegistrationActorSpec extends TestKit(ActorSystem()) with SpecificationLike with CoreActors with Core {
+  def receive: Receive = {
+    case FindAll(maximum)  =>
+      // reply with List[Tweet]
+    case CountAll =>
+      // reply with Long
+  }
+}
+</pre></code>
+<p>In the companion object, I have defined the <code>FindAll</code> and <code>CountAll</code> messages that our actor will react to; I have also left in the code that gives us the <code>Session</code> and then used the <code>Session</code> to construct a <code>BoundStatement</code> that counts all rows. Next up, we need to be able to construct an instance of <code>Tweet</code> given a <code>Row</code>.</p>
+<code><pre>
+class TweetReaderActor(cluster: Cluster) extends Actor {
+  ...
+
+  def buildTweet(r: Row): Tweet = {
+    val id = r.getString("key")
+    val user = r.getString("user_user")
+    val text = r.getString("text")
+    val createdAt = r.getDate("createdat")
+    Tweet(id, user, text, createdAt)
+  }
+  ...
+}
+</pre></code>
+<p>Again, nothing too dramatic we simply pick the values of the columns in the row and use them to make an instance of <code>Tweet</code>. Now, let's wire in the Cassandra magic. We would like to <em>execute</em> (asynchronously) some <em>query</em>; map the <em>rows</em> returned from that query execution to turn them into the <em>tweets</em>; and then <em>pipe</em> the result to the <em>sender</em>. (The italic text gives plenty of hints, so let's just get the code in.)</p>
+<code><pre>
+class TweetReaderActor(cluster: Cluster) extends Actor {
+  val session = cluster.connect(Keyspaces.akkaCassandra)
+  val countAll  = new BoundStatement(session.prepare("select count(*) from tweets;"))
+
+  import scala.collection.JavaConversions._
+  import cassandra.resultset._
+  import context.dispatcher
+  import akka.pattern.pipe
+
+  def buildTweet(r: Row): Tweet = {...}
+
+  def receive: Receive = {
+    case FindAll(maximum)  =>
+      val query = QueryBuilder.select().all().from(Keyspaces.akkaCassandra, "tweets").limit(maximum)
+      session.executeAsync(query) map(_.all().map(buildTweet).toList) pipeTo sender
+    case CountAll =>
+      session.executeAsync(countAll) map(_.one.getLong(0)) pipeTo sender
+  }
+}
+</pre></code>
+<p>Let me dissect the <code>FindAll</code> message handler. First, I construct the <code>query</code> usingCassandra's <code>QueryBuilder</code> (which I have renamed to <code>QB</code> in the imports). This is ordinary Cassandra code. </p>
+<p>What follows is much more interesting I call the <code>executeAsync</code> method on the <code>session</code>,which returns <code>ResultSetFuture</code>. Using implicit conversion in <code>cassandra.resultset._</code>, I turnthe <code>ResultSetFuture</code> into Scala's <code>Future[ResultSet]</code>. This allows me to use the <code>Future.map</code> method to turn the <code>ResultSet</code> into <code>List[Tweet]</code>.</p>
+<p>Calling <code>session.executeAsync(query) map</code> expects as its parameter a function from <code>ResultSet</code> to some type <code>B</code>. In our case, <code>B</code> is <code>List[Tweet]</code>. The <code>ResultSet</code> contains the method <code>all()</code>, which returns <code>java.util.List[Row]</code>. To be able to <code>map</code> over the <code>java.util.List[Row]</code>, we need to turn it into the Scala <code>List[Row]</code>. To do so, we bring in the implicit conversions in <code>scala.collection.JavaConversions</code>. And now, we can complete the parameter of the <code>Future.map</code> function.</p>
+<p><code>session.executeAsync(query) map(_.all().map(buildTweet).toList)</code> therefore gives us <code>Future[List[Tweet]]</code>, which is tantalizingly close to what we need. We do not want to block for the result, and we are too lazy to use the <code>onSuccess</code> function, because all that it would do is to pass on the result to the <code>sender</code>. So, instead, we <em>pipe</em> the success of the future to the <code>sender</code> That completes the picture, explaining the entire line <code>session.executeAsync(query) map(_.all().map(buildTweet).toList) pipeTo sender</code>.</p>
+</div>
+<div>
+<h2>Connecting to Cassandra</h2>
+<p>Before I move on, I need to explain where the <code>Cluster</code> value comes from. Thinking about the system we are writing, we may need to have different values of <code>Cluster</code> for tests and for the main system. Moreover, the test <code>Cluster</code> will most likely need some special setup. Because I can't decide just yet, I'd simply define that there is a <code>CassandraCluster</code> trait that returns the <code>Cluster</code>; and to give implementations that do the right thing one that loads the configuration from the <code>ActorSystem</code>'s configuration, and one that is hard-coded to be used in tests.</p>
+<code><pre>
+trait CassandraCluster {
+  def cluster: Cluster
+}
+</pre></code>
+<p>The configuration-based implementation and the test configuration differ only in the values they use to make the <code>Cluster</code> instance.</p>
+<code><pre>
+// in src/scala/main
+trait ConfigCassandraCluster extends CassandraCluster {
+  def system: ActorSystem
+
+  private def config = system.settings.config
+
+  import scala.collection.JavaConversions._
+  private val cassandraConfig = config.getConfig("akka-cassandra.main.db.cassandra")
+  private val port = cassandraConfig.getInt("port")
+  private val hosts = cassandraConfig.getStringList("hosts").toList
+
+  lazy val cluster: Cluster =
+    Cluster.builder().
+      addContactPoints(hosts: _*).
+      withCompression(ProtocolOptions.Compression.SNAPPY).
+      withPort(port).
+      build()
+}
+
+// in src/scala/test
+trait TestCassandraCluster extends CassandraCluster {
+  def system: ActorSystem
+
+  private def config = system.settings.config
+
+  import scala.collection.JavaConversions._
+  private val cassandraConfig = config.getConfig("akka-cassandra.test.db.cassandra")
+  private val port = cassandraConfig.getInt("port")
+  private val hosts = cassandraConfig.getStringList("hosts").toList
+
+  lazy val cluster: Cluster =
+    Cluster.builder().
+      addContactPoints(hosts: _*).
+      withPort(port).
+      withCompression(ProtocolOptions.Compression.SNAPPY).
+      build()
+
+}
+</pre></code>
+<p>This allows me to mix in the appropriate trait and get the properly configured <code>Cluster</code>. But there's a little twist when it comes to tests for the tests, I want to have the cluster in a well-known state. To solve this, I create the <code>CleanCassandra</code> trait that resets the <code>Cluster</code> given by some <code>CassandraCluster.cluster</code>.</p>
+<code><pre>
+trait CleanCassandra extends SpecificationStructure {
+  this: CassandraCluster =>
+
+  private def runClq(session: Session, file: File): Unit = {
+    val query = Source.fromFile(file).mkString
+    query.split(";").foreach(session.execute)
+  }
+
+  private def runAllClqs(): Unit = {
+    val session = cluster.connect(Keyspaces.akkaCassandra)
+    val uri = getClass.getResource("/").toURI
+    new File(uri).listFiles().foreach { file =>
+      if (file.getName.endsWith(".cql")) runClq(session, file)
+    }
+    session.shutdown()
+  }
+
+  override def map(fs: => Fragments) = super.map(fs) insert Step(runAllClqs())
+}
+</pre></code>
+<p>When I mix in this trait into my test, it registers the <code>runAllClqs()</code> steps to be executed <em>before</em> all other steps in the test.</p>
+</div>
+<div>
+<h2>Testing</h2>
+<p>And so, I can write my first test that verifies that the <code>TwitterReaderActor</code> and <code>TwitterWriterActor</code> indeed work as expected. The body of the test is rather long, but it is not too difficult to conceptually follow what is happening.</p>
+<code><pre>
+class TweetActorsSpec extends TestKit(ActorSystem())
+  with SpecificationLike with TestCassandraCluster with CleanCassandra with ImplicitSender {
   sequential
 
-  private def mkUser(email: String): User = User(UUID.randomUUID(), "A", "B", email)
+  val writer = TestActorRef(new TweetWriterActor(cluster))
+  val reader = TestActorRef(new TweetReaderActor(cluster))
 
-  "Registration should" >> {
+  "Slow & steady" >> {
+    def write(count: Int): List[Tweet] = {
+      val tweets = (1 to count).map(id => Tweet(id.toString, "@honzam399", "Yay!", new Date))
+      tweets.foreach(writer !)
+      Thread.sleep(1000)    // wait for the tweets to hit the db
+      tweets.toList
+    }
 
-    "reject invalid email" in {
-      registration ! Register(mkUser(""))
-      expectMsg(Left(NotRegistered))
+    "Single tweet" in {
+      val tweet = write(1).head
+
+      reader ! FindAll(1)
+      val res = expectMsgType[List[Tweet]]
+      res mustEqual List(tweet)
+    }
+
+    "100 tweets" in {
+      val writtenTweets = write(100)
+
+      reader ! FindAll(100)
+      val readTweets = expectMsgType[List[Tweet]]
+      readTweets must containTheSameElementsAs(writtenTweets)
+    }
+  }
+
+}
+</pre></code>
+<p>We are mixing in a lot of components to assemble the test. First of all, we ar extending the <code>TestKit</code>, giving it an <code>ActorSystem()</code> as constructor parameter; we next mix in Specs2's <code>SpecificationLike</code>, then our Cassandra test environment, completing the picture with the <code>ImplicitSender</code> to allow us to examine the responses.</p>
+<p>The actual body of the <code>"Slow & steady"</code> specification verifies that we can write  read single and 100 tweets.</p>
+<p>Before you run the test, you must make sure that you have Cassandra running and that you've created the right keyspaces. To make your life easier, you can simply run the CQL scripts in <code>src/data</code>. You need to run--in sequence</p>
+<code><pre>
+keyspaces.cql
+Then, in the correct keyspace:
+   tables.cql
+   words.cql
+</pre></code>
+</div>
+<div>
+<h2>Scanning tweets</h2>
+<p>Onwards Now that we know that we can safely store and retrieve the tweets from Cassandra, we need to write the component that is going to download them. In our system, this is the <code>TweetScannerActor</code>. It receives a message of type <code>String</code>, and it performs the HTTP request to download the tweets. (To keep this tutorial simple, I'm using the convenient Twitter proxy at <a href="http://twitter-search-proxy.herokuapp.com/search/tweets?q=" target="_blank">"http//twitter-search-proxy.herokuapp.com/search/tweets</a>. In any case, the task for the scanner actor is to construct the HTTP request, receive the response, turn it into <code>List[Tweet]</code> and send that list to the <code>ActorRef</code> of the <code>TweetWriterActor</code>.</p>
+<code><pre>
+class TweetScannerActor(tweetWrite: ActorRef, queryUrl: String => String)
+  extends Actor with TweetMarshaller {
+
+  import context.dispatcher
+  import akka.pattern.pipe
+
+  private val pipeline = sendReceive ~> unmarshal[List[Tweet]]
+
+  def receive: Receive = {
+    case query: String => pipeline(Get(queryUrl(query))) pipeTo tweetWrite
+  }
+}
+</pre></code>
+<p>It is actually that simple We use Spray-Client to construct the HTTP pipeline, which makes HTTP request (<code>sendReceive</code>), and passes the raw HTTP response to be unmarshalled (that is, turned into instance of types in our systems).</p>
+<p>The <code>pipeline</code> starts its job when it is applied to <code>HttpRequest</code>; in our case, <code>Get(url: String)</code> represents a mechanism that can construct such <code>HttpRequest</code>s. When applied to the <code>query</code>, the function <code>queryUrl</code> returns the actual URL for the pipeline to work on.</p>
+<p>Execution of the <code>pipeline</code> returns <code>Future[List[Tweet]]</code>, which we can happily <code>pipeTo</code> the <code>tweetWrite</code> actor.</p>
+<p>The only job that remains is for us to implement the unmarshaller. In Spray-Client's case unmarshaller is a typeclass and the implementation is an instance of the typeclass. The easiest way to think about typeclasses is to imagine that typeclass is a <em>trait</em> which defines behaviour for some type, and that the typeclass instance is the implementation of that trait for some type.</p>
+<p>In Spray-Client's case, the typeclass is <code>trait Unmarshaller[A]</code>, whose <code>apply</code> method takes <code>HttpEntity</code> and returns <code>Deserialized[A]</code>. The name <code>apply</code> should ring some bells--and indeed, <code>Unmarshaller[A]</code> is in essence an alias for <code>trait Unmarshaller[A] extends (HttpEntity => Deserialized[A])</code>. (Yes, you can extend <em>(A = B) in Scala, which is syntactic sugar for</em> <code>trait Unmarshaller[A] extends Function1[HttpEntity, Deserialized[A]]</code>.) Now, the <code>unmarshal</code> directive we used earlier is defined as</p>
+<code><pre>
+def unmarshal[A : Unmarshaller]: HttpResponse => A
+</pre></code>
+<p>The <code>: Unmarshaller</code> is a context bound on the type parameter <code>A</code>, which causes the compiler to expand the function into</p>
+<code><pre>
+def unmarshal[A](implicit ev: Unmarshaller[A]): HttpResponse => A
+</pre></code>
+<p>The <code>unmarshal</code> function expects an instance of the typeclass <code>Unmarshaller</code> for some type <code>A</code>; in our case, we specify the type <code>A</code> to be <code>List[Tweet]</code>. We can make a mental substitution of <code>A</code> for <code>List[Tweet]</code> and arrive at <code>unmarshal[List[Tweet]](implicit ev: Unmarshaller[List[Tweet]]): ...</code>. To make the application work, there needs to be a value of type <code>Unmarshaller[List[Tweet]]</code> in the current implicit scope. When we give such value, we say that we are giving instance of the <code>Unmarshaller</code> typeclass.</p>
+<code><pre>
+trait TweetMarshaller {
+  type Tweets = List[Tweet]
+
+  implicit object TweetUnmarshaller extends Unmarshaller[Tweets] {
+
+    val dateFormat = new SimpleDateFormat("EEE MMM d HH:mm:ss Z yyyy")
+
+    def mkTweet(status: JsValue): Deserialized[Tweet] = {
+      val json = status.asJsObject
+      ...
+    }
+
+    def apply(entity: HttpEntity): Deserialized[Tweets] = {
+      val json = JsonParser(entity.asString).asJsObject
+      ...
+    }
+  }
+
+}
+</pre></code>
+<p>Our typeclass instance is the <code>TweetUnmarshaller</code> singleton, which extends <code>Unmarshaller[Tweets]</code>. Notice that I have also defined a type alias <code>type Tweets = List[Tweet]</code> so that I don't have to write too many square brackets. By extending <code>Unmarshaller[Tweets]</code>, we must implement the <code>apply</code> method, which is applied to the <code>HttpEntity</code> and should return either deserialized tweets or indicate an error.</p>
+<p>We nearly have everything in place. But how do we satisfy ourselves that the <code>TweetScannerActor</code> indeed works?</p>
+</div>
+<div>
+<h2>Testing the <code>TweetScannerActor</code></h2>
+<p>To test the scanner fully, we would like to use a well-known service. But where do we get it? We can't really use the live service, because the tweets keep changing. It seems that the only way would be for us to implement a mock service and use it in our tests.</p>
+<code><pre>
+class TweetScanActorSpec extends TestKit(ActorSystem())
+  with SpecificationLike with ImplicitSender {
+
+  sequential
+
+  val port = 12345
+  def testQueryUrl(query: String) = s"http://localhost:$port/q=$query"
+
+  val tweetScan = TestActorRef(new TweetScannerActor(testActor, testQueryUrl))
+
+  "Getting all 'typesafe' tweets" >> {
+
+    "should return more than 10 last entries" in {
+      val twitterApi = TwitterApi(port)
+      tweetScan ! "typesafe"
+      Thread.sleep(1000)
+      val tweets = expectMsgType[List[Tweet]]
+      tweets.size mustEqual 4
+      twitterApi.stop()
       success
     }
+  }
+}
+</pre></code>
+<p>When constructing the <code>TweetScannerActor</code>, we give it the <code>testActor</code> and a function that returns URLs on <code>localhost</code> on some <code>port</code>. In the body of the example, we start the mock <code>TwitterApi</code> on the given port; and use our <code>TweetScannerActor</code> to make the HTTP request. Because we gave the <code>testActor</code> as the writer <code>ActorRef</code>, we should now be able to see the <code>List[Tweet]</code> that would have been sent to the <code>TweetWriterActor</code>.</p>
+<p>Because our mock tweetset contains four tweets, we can make the assertion that the list indeed contains four tweets. (I leave more extensive testing as exercise for the reader.)</p>
+</div>
+<div>
+<h2>Main</h2>
+<p>I am now satisfied that the components in the system work as expected; I can therefore assemble the <code>App</code> object, which brings everything together in a command-line interface. I give you the <code>Main</code> object</p>
+<code><pre>
+object Main extends App with ConfigCassandraCluster {
+  import Commands._
+  import akka.actor.ActorDSL._
 
-    "accept valid user to be registered" in {
-      registration ! Register(mkUser("jan@eigengo.com"))
-      expectMsg(Right(Registered))
-      success
+  def twitterSearchProxy(query: String) = s"http://twitter-search-proxy.herokuapp.com/search/tweets?q=$query"
+
+  implicit lazy val system = ActorSystem()
+  val write = system.actorOf(Props(new TweetWriterActor(cluster)))
+  val read = system.actorOf(Props(new TweetReaderActor(cluster)))
+  val scan = system.actorOf(Props(new TweetScannerActor(write, twitterSearchProxy)))
+
+  // we don't want to bother with the ``ask`` pattern, so
+  // we set up sender that only prints out the responses to
+  // be implicitly available for ``tell`` to pick up.
+  implicit val _ = actor(new Act {
+    become {
+      case x => println(">>> " + x)
+    }
+  })
+
+  @tailrec
+  private def commandLoop(): Unit = {
+    Console.readLine() match {
+      case QuitCommand                => return
+      case ScanCommand(query)         => scan ! query.toString
+
+      case ListCommand(count)         => read ! FindAll(count.toInt)
+      case CountCommand               => read ! CountAll
+
+      case _                          => println("WTF??!!")
+    }
+
+    commandLoop()
+  }
+
+  // start processing the commands
+  commandLoop()
+
+  // when done, stop the ActorSystem
+  system.shutdown()
+
+}
+</pre></code>
+<p>We have the main <code>commandLoop()</code> function, which reads the line from standard input, matches it against the commands and sends the appropriate messages to the right actors. It also mixes in the "real" source of Cassandra <code>Cluster</code> values and specifies the live function that constructs the URL to retrieve the tweets.</p>
+</div>
+<div>
+<h2>For interested readers <code>TwitterApi</code></h2>
+<p>The <code>TwitterApi</code> is the mock version of the real Twitter Proxy API. It makes it easy to write repeatable and independent tests of the <code>TweetScannerActor</code>. Under the hood, it is implemented using Spray-Can and the HTTP Akka Extension. The intention is that upon construction it binds to the given port and responds to every GET request with the given body. To shutdown the API, you must call the <code>stop()</code> method. To give me greater control over the construction of the class, I define the constructor as private and give a companion object whose <code>apply</code> method returns properly constructed and bound <code>TwitterApi</code>.</p>
+<code><pre>
+class TwitterApi private(system: ActorSystem, port: Int, body: String) {
+
+  val blackHoleActor = system.actorOf(Props(new Actor {
+    def receive: Receive = Actor.emptyBehavior
+  }))
+
+  private class Service extends Actor {
+
+    def receive: Receive = {
+      case _: Http.Connected =>
+        sender ! Http.Register(self)
+      case HttpRequest(HttpMethods.GET, _, _, _, _) =>
+
+        sender ! HttpResponse(entity = HttpEntity(body))
+      case _ =>
     }
   }
 
+  private val service = system.actorOf(Props(new Service).withRouter(RoundRobinRouter(nrOfInstances = 50)))
+  private val io = IO(Http)(system)
+  io.tell(Http.Bind(service, "localhost", port = port), blackHoleActor)
+
+  def stop(): Unit = {
+    io.tell(Http.Unbind, blackHoleActor)
+    system.stop(service)
+    system.stop(io)
+  }
 }
-</code></pre>
-        This is the entire body of our test. I instantiate the actors in <code>CoreActors</code>,
-        satisfying the <code>Core</code> self-type annotation by having the <code>RegistrationActorSpec</code>
-        implement the <code>Core</code> trait. (Remember, I can do that just by writing <code>with Core</code>,
-        because <code>TestKit</code> already contains the member <code>system: ActorSystem</code>, which is
-        all that is needed to fully implement <code>Core</code>.)
-    </p>
 
-    <p>
-        Onwards. If you run the test, it will fail. It will complain about failing timeouts, namely
-<pre><code>
-assertion failed: timeout (3 seconds) during expectMsgClass waiting for class core.RegistrationActor$NotRegistered$
-</code></pre>
-        And yet, if you place a breakpoint in the <code>RegistrationActor</code>'s <code>receive</code>,
-        you will see that it is indeed executing; replying to the <code>sender</code> with the appropriate
-        message.<br/>
-        The only conclusion is that the <code>sender</code> itself is somehow broken. Indeed. Going back to our
-        test, I write <code>registration ! Register(mkUser(""))</code>. If you explore the <code>!</code>
-        function, you will see that it is a curried function, whose first parameter list is the
-        message to be sent, and its second parameter list is the <code>ActorRef</code> which represents
-        the sender. It is marked as <code>implicit</code>, but it also contains a <em>default value</em>.
-        So, if no <code>ActorRef</code> instance is available implicitly, the default value will be used
-        instead. Unfortunately for me here, the default value is <code>Actor.noSender</code>.
-    </p>
+object TwitterApi {
 
-    <p>
-        To fix the problem, all I need to do is have an implicit <code>ActorRef</code> value. However,
-        this <code>ActorRef</code> should also somehow interact with the rest of the code in TestKit.
-        Furtunately for the lazy, TestKit provides the <code>ImplicitSender</code> trait, which makes
-        the <code>testActor</code> implicitly available; and the <code>testActor</code> interacts with
-        all the <code>expect...</code> functions in TestKit.
-<pre><code>
-class RegistrationActorSpec extends TestKit(ActorSystem()) with SpecificationLike with CoreActors with Core with ImplicitSender {
-   ...
-}
-</code></pre>
-        I mix in the <code>ImplicitSender</code> and all is good!
-    </p>
-</div>
-<div>
-    <h2>Spray</h2>
-    <p>
-        I am going to use most of the Spray components, namely
-        <ul>
-            <li><code>spray-io</code> for the low-level, asynchronous I/O,</li>
-            <li><code>spray-http</code> for the HTTP protocol implementation on top of <code>spray-io</code>,</li>
-            <li><code>spray-routing</code>, which provides convenient DSL for mapping HTTP requests to functions,</li>
-            <li><code>spray-httpx</code> for the unmarshalling and marshalling of the HTTP requests and responses,</li>
-            <li><code>spray-json</code> for JSON marshallers and unmarshallers</li>
-        </ul>
-        This feels like quite a handful, but you will see that the code is rather succinct and,
-        of course, type safe. Even more importantly, the Spray code does not interfere with the
-        core of our system. The core can remain completely oblivious of the way in which it is
-        exposed.
-    </p>
-
-    <p>
-        I continue to strictly separate the layers of (even if so trivial) application; therefore,
-        I will separate the REST API from the code that starts the HTTP server hosting the API.
-        In keeping with the rest of the system, I will split the layers into traits, giving me
-        the <code>Api</code> and <code>Web</code> traits. As you can guess, the <code>Api</code> trait
-        contains just the REST API, and the <code>Web</code> trait exposes the APIs in a real
-        HTTP server.<br/>
-        To make the <code>Api</code> trait work with the rest of the system, I will use the self-type
-        annotation and require that the <code>Api</code> trait is mixed in with <code>CoreActors</code>
-        and <code>Core</code>. The <code>Web</code> trait will need to be mixed in with <code>Api</code>.
-<pre><code>
-trait Api {
-  this: CoreActors with Core =>
-
-  ...
-}
-</code></pre>
-        And
-<pre><code>
-trait Web {
-  this: Api with CoreActors with Core =>
-
-  ...
-}
-</code></pre>
-        All of this to enable me to write tests that exercise just the REST API, without the need
-        to start the HTTP server and deal with the added complexity of real HTTP requests; and to
-        allow me to write a subtype of <code>App</code> that combines all the components
-        and starts a real HTTP server; server, which hosts the API, which in turn uses the core
-        actors to do the heavy processing. In code, the <em>entire</em> application is just one line:
-<pre><code>
-object Rest extends App with BootedCore with CoreActors with Api with Web
-</code></pre>
-        <em>Amazing!</em>
-    </p>
-</div>
-<div>
-    <h2>The API</h2>
-    <p>
-        Let's explore the <code>Api</code> trait, which defines the REST endpoints. In keeping with the
-        structure from the diagram, I have kept each endpoint in its own class. The <code>Api</code> trait
-        constructs the classes for these endpoints and then concatenates the routes they each expose.
-        The <code>RoutedHttpService</code> then routes the incoming HTTP requests accordingly.
-<pre><code>
-trait Api extends RouteConcatenation {
-  this: CoreActors with Core =>
-
-  private implicit val _ = system.dispatcher
-
-  val routes =
-    new RegistrationService(registration).route ~
-    new MessengerService(messenger).route
-
-  val rootService = system.actorOf(Props(new RoutedHttpService(routes)))
-
-}
-</code></pre>
-        I instantiate the <code>RegistrationService</code> and the <code>MessengerService</code>, giving
-        each reference to the approprite <code>ActorRef</code> from the <code>CoreActors</code>. (I can do
-        this, because the <code>Api</code> trait declares the <code>CoreActors</code> as its self-type.)
-    </p>
-</div>
-<div>
-    <h2>Registration Service</h2>
-
-    <p>
-        I will show the code and structure of the <code>RegistrationService</code>, which is ever so
-        slightly more complex than the code in <code>MessengerService</code>. The motivation for the
-        <code>RegistrationService</code> is to have REST API that receives JSON payloads in that can
-        be mapped to instances of the <code>Register</code> case class.
-<pre><code>
-{ "user": {
-    "id": "122fa630-92fd-11e2-9e96-0800200c9a66",
-    "firstName":"Jan",
-    "lastName":"Machacek",
-    "email":"jan@eigengo.com" } }
-</code></pre>
-        I expect replies to match the responses (<code>Either[NotRegistered, Registered]</code>);
-        the value on the left projection should result in HTTP status <em>bad request</em>; the
-        value on the right projection should be HTTP OK. In our application, the value
-        <code>Left(NotRegistered)</code> should be represented as HTTP status <code>400</code>
-        with JSON payload
-<pre><code>
-{ "value": "NotRegistered" }
-</code></pre>
-        The <code>Right(Registered)</code> should be represented as HTTP status <code>200</code>
-        with JSON payload
-<pre><code>
-{ "value": "Registered" }
-</code></pre>
-    </p>
-
-    <p>
-        Before I begin to worry about the marshalling and unmarshalling, let's deal with the actual
-        HTTP requests. <em>Spray-can</em> deals with the low-level I/O of asynchronous HTTP (and SPDY!) server;
-        it then turns the HTTP requests and responses into <code>HttpRequest</code> messages;
-        the response sent to the sender is the <code>HttpResponse</code>, containing the response entity,
-        headers, etc.<br/>
-        <em>Spray-http</em> deals with convenient routing so that I don't have to implement actors that
-        receive <code>HttpRequest</code>s and reply to the sender with the raw <code>HttpResponse</code>s;
-        <em>spray-httpx</em> adds the marshalling and unmarshalling support.<br/>
-    </p>
-    <p>
-        <img src="tutorial/spray.png" title="Spray"/>
-    </p>
-
-    <p>
-        Let's start working on the <code>RegistrationService</code>. I will begin by using the routes.
-<pre><code>
-class RegistrationService(registration: ActorRef)(implicit executionContext: ExecutionContext)
-  extends Directives {
-
-  val route =
-    path("register") {
-      post {
-        complete {
-          "OK"
-        }
-      }
-    }
-
-}
-</code></pre>
-        This is a good start. It clearly demonstrates the ease of Spray's routing. I say that on <em>path</em>
-        <code>register</code>, on HTTP method <em>POST</em>, I <em>complete</em> the request with body <code>"OK</code>.
-        Unfortunately, the string <code>"OK"</code> doesn't quite meet our requirement. To do so, I need to interpret
-        the request as instance of <code>Register</code> and turn our <code>Either[NotRegistered.type, Registered.type]</code>
-        into the response.
-    </p>
-
-    <p>
-        All of this requires some marshalling jiggery pokery. Firstly, I need to be able to turn
-        the HTTP requests into instances of our types and then I need to be able to do the reverse.
-        Spray provides pluggable marshalling mechanism to do that. The instances of the typeclasses
-        <code>Marshaller[A]</code> and <code>Unmarshaller[A]</code> are responsible for performing the
-        <em>request entity</em> -&gt; <em>our instance</em> and <em>our instance</em> -&gt; <em>response entity</em>
-        transformations.<br/>
-        I will not get into a complex discussion of typeclasses; I will just say that typeclass defines
-        behaviour for a certain type and a typeclass instance is the implementation of such behaviour.
-        Spray includes the <code>spray-json</code> library, which, together with the <code>SprayJsonSupport</code>
-        trait allows me to wire in <code>spray-json</code> marshallers and unmarshallers and use them in my
-        Spray code.
-    </p>
-
-    <p>
-        Without further delay, let me show you how it's done in code and then explore the details.
-<pre><code>
-class RegistrationService(registration: ActorRef)(implicit executionContext: ExecutionContext)
-  extends Directives with DefaultJsonFormats {
-
-  import akka.pattern.ask
-  import scala.concurrent.duration._
-  implicit val timeout = Timeout(2.seconds)
-
-  implicit val userFormat = jsonFormat4(User)
-  implicit val registerFormat = jsonFormat1(Register)
-  implicit val registeredFormat = jsonObjectFormat[Registered.type]
-  implicit val notRegisteredFormat = jsonObjectFormat[NotRegistered.type]
-  implicit object EitherErrorSelector extends ErrorSelector[NotRegistered.type] {
-    def apply(v: NotRegistered.type): StatusCode = StatusCodes.BadRequest
+  def apply(port: Int)(implicit system: ActorSystem): TwitterApi = {
+    val body = Source.fromInputStream(getClass.getResourceAsStream("/tweets.json")).mkString
+    new TwitterApi(system, port, body)
   }
 
-  val route =
-    path("register") {
-      post {
-        handleWith { ru: Register =>
-          (registration ? ru).mapTo[Either[NotRegistered.type, Registered.type]]
-        }
-      }
-    }
-
 }
-</code></pre>
-        Looking at the <code>route</code> definition, the only difference is that I changed
-        <code>complete</code> to <code>handleWith</code>; and then wired in the call to our
-        <code>RegistrationActor</code>.<br/>
-        Reading the code intuitively, I say that <em>to handle requests to </em>register<em> on
-        HTTP method </em>post<em>, I turn the request into <code>Register</code> and then</em>
-        handleWith<em> a function that returns a <code>Future[Either[...]]</code>, which we
-        turn into a response</em>.
-    </p>
-
-    <p>
-        Intuition did not fail us. All I have to do is to implement the behaviour of turning the
-        requests into our types and our types into responses. So, instances of typeclasses! Those are
-        the mysterious lines
-<pre><code>
-implicit val userFormat = jsonFormat4(User)
-implicit val registerFormat = jsonFormat1(Register)
-implicit val registeredFormat = jsonObjectFormat[Registered.type]
-implicit val notRegisteredFormat = jsonObjectFormat[NotRegistered.type]
-</code></pre>
-        You see, their types are <code>RootJsonFormat[A]</code>, where <code>A</code> is <code>User</code>,
-        <code>Register</code>, and so on. <code>RootJsonFormat[A]</code> contains functions that read JSON
-        and write JSON; <code>SprayJsonSupport</code> then contains further typeclass instances that implement
-        <code>Marshaller[A]</code> given <code>JsonWriter[A]</code>, and <code>Unmarshaller[A]</code> given
-        <code>JsonReader[A]</code>. Moving on, I can create other interesting marshalling typeclasses.
-    </p>
-
-    <p>
-        For example, if I know how to marshal some type <code>A</code>, I also know how to marshal
-        <code>Seq[A]</code>, <code>Future[A]</code>; if I know how to marshal some <code>A</code> and
-        <code>B</code>, I can marshal <code>Either[A, B]</code>, and so on. I am now ready to write
-        a marshaller that marshals <code>Either[A, B]</code> and, for the left values, it also indicates
-        the corret HTTP status code. Its signature is rather scary
-<pre><code>
-type ErrorSelector[A] = A => StatusCode
-
-implicit def errorSelectingEitherMarshaller[A, B](implicit ma: Marshaller[A], mb: Marshaller[B], esa: ErrorSelector[A]): Marshaller[Either[A, B]] =
-  Marshaller[Either[A, B]] { (value, ctx) =>
-    value match {
-      case Left(a) =>
-        val mc = new CollectingMarshallingContext()
-        ma(a, mc)
-        ctx.handleError(ErrorResponseException(esa(a), mc.entity))
-      case Right(b) =>
-        mb(b, ctx)
-    }
-  }
-</code></pre>
-        And breathe! Now, I have a function <code>errorSelectingEitherMarshaller[A, B]</code> that returns
-        <code>Marshalle[Either[A, B]]</code>. To be able to do that, it must know how to marshal <code>A</code>
-        and <code>B</code>; and if I want to be able to indicate the status code, I must also be able to turn
-        <code>A</code>s into <code>StatusCode</code>. That's what the three implicit parameters do: I am asking
-        the compiler to implicitly find an instance of <code>Marshaller[A]</code>, <code>Marshaller[B]</code> and
-        <code>ErrorSelector[A]</code>; in other words, instances of the <code>Marshaller</code> and <code>ErrorSelector</code>
-        typeclasses for instances <code>A</code> and <code>B</code>.
-    </p>
-
-    <p>
-        To use, I must give the typeclass instance for <code>ErrorSelector[A]</code>, where <code>A</code> is <code>NotRegistered.type</code>;
-        I do so by defining a singleton:
-<pre><code>
-implicit object EitherErrorSelector extends ErrorSelector[NotRegistered.type] {
-  def apply(v: NotRegistered.type): StatusCode = StatusCodes.BadRequest
-}
-</code></pre>
-        So, any <code>NotRegistered</code> value is <code>StatusCodes.BadRequest</code>.
-    </p>
+</pre></code>
+<p>Calling <code>TwitterApi(1234)</code> with an implicit <code>ActorSystem</code> in scope (for example in a <code>TestKit</code> test) loads the body from a well-known location on the classpath and then constructs the <code>TwitterApi</code> instance, passing it the <code>ActorSystem</code>, <code>port</code>, and <code>body</code>. In the body of the <code>TwitterApi</code> class, I have an <code>Actor</code> that serves the HTTP requests, which is then used in the <code>Bind</code> message sent to the <code>io</code> extension.</p>
+<p>The service is bound to the HTTP server until the <code>stop()</code> method is called. The <code>stop()</code> method unbinds the <code>service</code>, and stops it and the <code>io</code> extension. (You would typically do this at the end of your example.)</p>
 </div>
 <div>
-    <h2>The web server</h2>
-
-    <p>
-        To complete the picture, I must implement the <code>Web</code> trait, which takes the
-        <code>rootService</code> in the <code>Api</code> trait and hosts it in the <code>spray-can</code>
-        HTTP server. The good news is that the code gets simpler:
-<pre><code>
-trait Web {
-  this: Api with CoreActors with Core =>
-
-  IO(Http)(system) ! Http.Bind(rootService, "0.0.0.0", port = 8080)
-
-}
-</code></pre>
-        I create the <code>Http</code> extension, pass it to Akka's <code>IO</code> machinery; and finally
-        send it the <code>Http.Bind</code> message to bind the <code>rootService</code> to all interfaces,
-        on port <code>8080</code>.
-    </p>
-</div>
-<div>
-    <h2>The grand finale</h2>
-    <p>
-        I am excited to present the final application that combines all our components in an
-        HTTP server. It is
-<pre><code>
-object Rest extends App with BootedCore with CoreActors with Api with Web
-</code></pre>
-        That's all there is to it. I have created an <code>App</code>, mixed in all required
-        traits and we're good to go.
-    </p>
+<h2>For interested readers <code>sentiment.R</code></h2>
+<p>Now, let's complete the picture with some mood analysis in R. I am trying to find if people are happy or unhappy about the tweets. To do so, I use a list of positive and negative words, which I store in my Cassandra <code>positivewords</code> and <code>negativewords</code> tables.</p>
 </div>
 </body>
 </html>

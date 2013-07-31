@@ -2,7 +2,7 @@ package core
 
 import akka.actor.{Props, ActorSystem}
 import scala.annotation.tailrec
-import core.TweetReadActor.{CountAll, FindAll}
+import core.TweetReaderActor.{CountAll, FindAll}
 
 object Main extends App with ConfigCassandraCluster {
   import Commands._
@@ -12,8 +12,8 @@ object Main extends App with ConfigCassandraCluster {
 
   implicit lazy val system = ActorSystem()
   val write = system.actorOf(Props(new TweetWriterActor(cluster)))
-  val read = system.actorOf(Props(new TweetReadActor(cluster)))
-  val scan = system.actorOf(Props(new TweetScanActor(write, twitterSearchProxy)))
+  val read = system.actorOf(Props(new TweetReaderActor(cluster)))
+  val scan = system.actorOf(Props(new TweetScannerActor(write, twitterSearchProxy)))
 
   // we don't want to bother with the ``ask`` pattern, so
   // we set up sender that only prints out the responses to
