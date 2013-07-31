@@ -162,11 +162,11 @@ class TweetReaderActor(cluster: Cluster) extends Actor {
 ```
 
 Let me dissect the ``FindAll`` message handler. First, I construct the ``query`` using
-Cassandra's ``QueryBuilder`` (which I have renamed to ``QB`` in the imports). This is ordinary Cassandra code. 
+Cassandra's ``QueryBuilder``. This is ordinary Cassandra code. 
 
 What follows is much more interesting: I call the ``executeAsync`` method on the ``session``,
 which returns ``ResultSetFuture``. Using implicit conversion in ``cassandra.resultset._``, I turn
-the ``ResultSetFuture`` into Scala's ``Future[ResultSet]``. This allows me to use the ``Future.map`` method to turn the ``ResultSet`` into ``List[Tweet]``.
+ the ``ResultSetFuture`` into Scala's ``Future[ResultSet]``. This allows me to use the ``Future.map`` method to turn the ``ResultSet`` into ``List[Tweet]``.
 
 
 Calling ``session.executeAsync(query) map`` expects as its parameter a function from ``ResultSet`` to some type ``B``. In our case, ``B`` is ``List[Tweet]``. The ``ResultSet`` contains the method ``all()``, which returns ``java.util.List[Row]``. To be able to ``map`` over the ``java.util.List[Row]``, we need to turn it into the Scala ``List[Row]``. To do so, we bring in the implicit conversions in ``scala.collection.JavaConversions``. And now, we can complete the parameter of the ``Future.map`` function.
