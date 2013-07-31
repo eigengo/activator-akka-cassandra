@@ -6,7 +6,7 @@ library(ggplot2)
 
 sentiment.score = function(tweets, pos.words, neg.words, .progress='none') {
     # Parameters
-    # sentences: vector of text to score
+    # tweets: vector of tweet bodies to score
     # pos.words: vector of words of postive sentiment
     # neg.words: vector of words of negative sentiment
     # .progress: passed to laply() to control of progress bar

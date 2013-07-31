@@ -3,7 +3,7 @@ package core
 import akka.actor.ActorSystem
 import org.specs2.mutable.SpecificationLike
 import akka.testkit.{TestActorRef, TestKit, ImplicitSender}
-import core.TweetReadActor.FindAll
+import core.TweetReaderActor.FindAll
 import domain.Tweet
 
 class TweetScanActorIntegrationSpec extends TestKit(ActorSystem())
@@ -13,9 +13,9 @@ class TweetScanActorIntegrationSpec extends TestKit(ActorSystem())
 
   def testQueryUrl(query: String) = s"http://twitter-search-proxy.herokuapp.com/search/tweets?q=$query"
 
-  val tweetRead  = TestActorRef(new TweetReadActor(cluster))
+  val tweetRead  = TestActorRef(new TweetReaderActor(cluster))
   val tweetWrite = TestActorRef(new TweetWriterActor(cluster))
-  val tweetScan  = TestActorRef(new TweetScanActor(tweetWrite, testQueryUrl))
+  val tweetScan  = TestActorRef(new TweetScannerActor(tweetWrite, testQueryUrl))
 
   "Getting all real 'typesafe' tweets" >> {
 
@@ -23,7 +23,7 @@ class TweetScanActorIntegrationSpec extends TestKit(ActorSystem())
       tweetScan ! "typesafe"
       Thread.sleep(20000)
       tweetRead ! FindAll(100)
-      val tweets = expectMsgType[Either[ErrorMessage, List[Tweet]]].right.get
+      val tweets = expectMsgType[List[Tweet]]
       println(tweets.size)
       success
     }

@@ -5,7 +5,7 @@ import akka.actor.{Props, ActorSystem}
 import akka.routing.RoundRobinRouter
 import domain.Tweet
 import java.util.Date
-import core.TweetReadActor.CountAll
+import core.TweetReaderActor.CountAll
 import scala.concurrent.Await
 import akka.util.Timeout
 import org.specs2.execute.Result
@@ -16,7 +16,7 @@ class TweetActorsPerformanceSpec extends SpecificationLike
 
   lazy val system: ActorSystem = ActorSystem()
   val writer = system.actorOf(Props(new TweetWriterActor(cluster)).withRouter(RoundRobinRouter(nrOfInstances = 50)))
-  val reader = system.actorOf(Props(new TweetReadActor(cluster)))
+  val reader = system.actorOf(Props(new TweetReaderActor(cluster)))
   import akka.pattern.ask
   import scala.concurrent.duration._
 
