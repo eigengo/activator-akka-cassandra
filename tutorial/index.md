@@ -436,7 +436,7 @@ object Main extends App with ConfigCassandraCluster {
       case ListCommand(count)         => read ! FindAll(count.toInt)
       case CountCommand               => read ! CountAll
 
-      case _                          => println("WTF??!!")
+      case _                          => return
     }
 
     commandLoop()
