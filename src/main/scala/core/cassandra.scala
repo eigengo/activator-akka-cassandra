@@ -7,8 +7,8 @@ import scala.concurrent.duration.Duration
 import java.util.concurrent.TimeUnit
 
 private[core] trait CassandraResultSetOperations {
-  private case class ExecutionContextExecutor(executonContext: ExecutionContext) extends java.util.concurrent.Executor {
-    def execute(command: Runnable): Unit = { executonContext.execute(command) }
+  private case class ExecutionContextExecutor(executionContext: ExecutionContext) extends java.util.concurrent.Executor {
+    def execute(command: Runnable): Unit = { executionContext.execute(command) }
   }
 
   protected class RichResultSetFuture(resultSetFuture: ResultSetFuture) extends Future[ResultSet] {
