@@ -1,7 +1,7 @@
 package core
 
 import akka.actor.Actor
-import com.datastax.driver.core.{ResultSet, BoundStatement, Cluster, Row}
+import com.datastax.driver.core.{BoundStatement, Cluster, Row}
 import domain.Tweet
 import core.TweetReaderActor.{CountAll, FindAll}
 import com.datastax.driver.core.querybuilder.QueryBuilder
@@ -31,7 +31,7 @@ class TweetReaderActor(cluster: Cluster) extends Actor {
   def receive: Receive = {
     case FindAll(maximum)  =>
       val query = QueryBuilder.select().all().from(Keyspaces.akkaCassandra, "tweets").limit(maximum)
-      session.executeAsync(query) map(_.all().map(buildTweet).toList) pipeTo sender
+      session.executeAsync(query) map(_.all().map(buildTweet).toVector) pipeTo sender
     case CountAll =>
       session.executeAsync(countAll) map(_.one.getLong(0)) pipeTo sender
   }

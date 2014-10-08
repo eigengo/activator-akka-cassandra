@@ -5,13 +5,11 @@ import spray.http.HttpEntity
 import spray.json._
 import spray.client.pipelining._
 import domain.Tweet
-import scala.Some
 import java.text.SimpleDateFormat
 import akka.actor.{ActorRef, Actor}
-import java.net.URLEncoder
 
 trait TweetMarshaller {
-  type Tweets = List[Tweet]
+  type Tweets = Vector[Tweet]
 
   implicit object TweetUnmarshaller extends Unmarshaller[Tweets] {
 

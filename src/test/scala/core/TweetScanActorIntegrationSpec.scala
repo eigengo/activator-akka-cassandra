@@ -23,7 +23,7 @@ class TweetScanActorIntegrationSpec extends TestKit(ActorSystem())
       tweetScan ! "typesafe"
       Thread.sleep(20000)
       tweetRead ! FindAll(100)
-      val tweets = expectMsgType[List[Tweet]]
+      val tweets = expectMsgType[Vector[Tweet]]
       println(tweets.size)
       success
     }
