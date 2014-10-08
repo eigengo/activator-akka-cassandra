@@ -5,7 +5,7 @@ import spray.can.Http
 import spray.http._
 import spray.http.HttpRequest
 import spray.http.HttpResponse
-import akka.routing.RoundRobinRouter
+import akka.routing.RoundRobinPool
 import akka.io.IO
 import scala.io.Source
 
@@ -27,7 +27,7 @@ class TwitterApi private(system: ActorSystem, port: Int, body: String) {
     }
   }
 
-  private val service = system.actorOf(Props(new Service).withRouter(RoundRobinRouter(nrOfInstances = 50)))
+  private val service = system.actorOf(Props(new Service).withRouter(RoundRobinPool(nrOfInstances = 50)))
   private val io = IO(Http)(system)
   io.tell(Http.Bind(service, "localhost", port = port), blackHoleActor)
 
