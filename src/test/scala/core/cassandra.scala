@@ -19,8 +19,8 @@ trait TestCassandraCluster extends CassandraCluster {
   lazy val cluster: Cluster =
     Cluster.builder().
       addContactPoints(hosts: _*).
-      withPort(port).
       withCompression(ProtocolOptions.Compression.SNAPPY).
+      withPort(port).
       build()
 
 }
@@ -28,19 +28,19 @@ trait TestCassandraCluster extends CassandraCluster {
 trait CleanCassandra extends SpecificationStructure {
   this: CassandraCluster =>
 
-  private def runClq(session: Session, file: File): Unit = {
+  private def runCql(session: Session, file: File): Unit = {
     val query = Source.fromFile(file).mkString
     query.split(";").foreach(session.execute)
   }
 
-  private def runAllClqs(): Unit = {
+  private def runAllCqls(): Unit = {
     val session = cluster.connect(Keyspaces.akkaCassandra)
     val uri = getClass.getResource("/").toURI
     new File(uri).listFiles().foreach { file =>
-      if (file.getName.endsWith(".cql")) runClq(session, file)
+      if (file.getName.endsWith(".cql")) runCql(session, file)
     }
-    session.shutdown()
+    session.close()
   }
 
-  override def map(fs: => Fragments) = super.map(fs) insert Step(runAllClqs())
+  override def map(fs: => Fragments) = super.map(fs) insert Step(runAllCqls())
 }

@@ -1,4 +1,4 @@
-DROP TABLE positivewords;
+DROP TABLE IF EXISTS positivewords;
 
 CREATE TABLE positivewords (
   key int PRIMARY KEY,
@@ -7,7 +7,7 @@ CREATE TABLE positivewords (
   AND COMPACT STORAGE
   AND read_repair_chance = 1.0;
 
-DROP TABLE negativewords;
+DROP TABLE IF EXISTS negativewords;
 
 CREATE TABLE negativewords (
   key int PRIMARY KEY,
@@ -16,7 +16,7 @@ CREATE TABLE negativewords (
   AND COMPACT STORAGE
   AND read_repair_chance = 1.0;
 
-DROP TABLE tweets;
+DROP TABLE IF EXISTS tweets;
 
 CREATE TABLE tweets (
   key text PRIMARY KEY,

@@ -3,7 +3,6 @@ package core
 import akka.actor.ActorSystem
 import org.specs2.mutable.SpecificationLike
 import akka.testkit.{TestActorRef, TestKit, ImplicitSender}
-import core.TweetReaderActor.FindAll
 import domain.Tweet
 
 class TweetScannerActorSpec extends TestKit(ActorSystem())
@@ -22,7 +21,7 @@ class TweetScannerActorSpec extends TestKit(ActorSystem())
       val twitterApi = TwitterApi(port)
       tweetScan ! "typesafe"
       Thread.sleep(1000)
-      val tweets = expectMsgType[List[Tweet]]
+      val tweets = expectMsgType[Vector[Tweet]]
       tweets.size mustEqual 4
       twitterApi.stop()
       success
