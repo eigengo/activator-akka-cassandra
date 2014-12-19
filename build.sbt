@@ -4,7 +4,11 @@ version := "1.1"
 
 scalaVersion := "2.10.4"
 
+packageArchetype.java_application
+
 resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
+
+resolvers += "Typesafe Repo" at "http://repo.typesafe.com/typesafe/releases/"
 
 resolvers += "spray repo" at "http://repo.spray.io"
 
