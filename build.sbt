@@ -1,3 +1,7 @@
+import com.typesafe.sbt.SbtNativePackager._
+import com.typesafe.sbt.packager.Keys._
+import NativePackagerKeys._
+
 name := "activator-akka-cassandra"
 
 version := "1.1"
@@ -13,6 +17,8 @@ resolvers += "Typesafe Repo" at "http://repo.typesafe.com/typesafe/releases/"
 resolvers += "spray repo" at "http://repo.spray.io"
 
 resolvers += "spray nightlies" at "http://nightlies.spray.io"
+
+maintainer in Docker := "Ahmad Aabed <ahmad.aabed.m@gmail.com>"
 
 libraryDependencies ++= {
   val akkaVersion = "2.3.6"
