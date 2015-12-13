@@ -1,12 +1,33 @@
+import com.typesafe.sbt.packager.docker._
+enablePlugins(DockerPlugin)
+
+
+
 name := "activator-akka-cassandra"
 
 version := "1.1"
 
 scalaVersion := "2.10.4"
 
+resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
+
+resolvers += "Scalaz Bintray Repo" at "https://dl.bintray.com/scalaz/releases"
+
+resolvers += "Typesafe Repo" at "http://repo.typesafe.com/typesafe/releases/"
+
 resolvers += "spray repo" at "http://repo.spray.io"
 
 resolvers += "spray nightlies" at "http://nightlies.spray.io"
+
+maintainer in Docker := "Ahmad Aabed <ahmad.aabed.m@gmail.com>"
+
+dockerRepository := Some("registry.marathon.mesos:5000")
+
+dockerUpdateLatest := true
+
+dockerBaseImage := "java"
+
+enablePlugins(JavaAppPackaging)
 
 libraryDependencies ++= {
   val akkaVersion = "2.3.6"
